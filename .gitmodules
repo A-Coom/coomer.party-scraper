@@ -1,0 +1,3 @@
+[submodule "scraping_utils"]
+	path = scraping_utils
+	url = git@github.com:A-Coom/scraping_utils.git

@@ -1,3 +1,4 @@
+from scraping_utils.scraping_utils import compute_file_hashes, download_urls
 from bs4 import BeautifulSoup
 from more_itertools import last
 from sys import stdout, argv
@@ -10,18 +11,6 @@ import re
 
 IMG_EXTS = [ 'jpg', 'jpeg', 'png', 'gif' ]
 VID_EXTS = [ 'mp4', 'm4v']
-
-
-"""
-Clean a list of extensions to not include a leading dot.
-@param exts - Original list of extensions.
-@return a list of cleaned extensions.
-"""
-def clean_exts(exts):
-    exts_clean = []
-    for ext in exts:
-        exts_clean.append(ext.replace('.', ''))
-    return exts_clean
 
 
 """
@@ -58,51 +47,6 @@ def iterate_pages(url, main_page, max_offset):
         res = requests.get(url + '?o=' + str(curr_offset))
         curr_page = BeautifulSoup(res.content, 'html.parser')
     return ret
-
-
-"""
-Compute the hashes of files with specified extensions using a specified algorithm function.
-@param dir - String of directory to process.
-@param exts - List of extensions.
-@param algo - Function for the hashing algorithm.
-@return a map indexed by hash value storing the file name.
-"""
-def compute_file_hashes(dir, exts, algo, hashes={}):
-    exts_clean = clean_exts(exts)
-    for name in os.listdir(dir):
-        full_name = os.path.join(dir, name)
-        ext = name.split('.')[-1]
-        if(os.path.isfile(full_name) and ext in exts_clean):
-            with open(full_name, 'rb') as file_in:
-                file_bytes = file_in.read()
-                file_hash = algo(file_bytes).hexdigest()
-                hashes[file_hash] = name
-    return hashes
-
-
-"""
-Download media from a list of URLs if they have not been seen before.
-@param dir - Destination directory for the download.
-@param urls - List of URLs to query.
-@param hashes - Map of seen hashes, indexed by hash with value for the original media name.
-@param algo - Algorithm used by the map of hashes.
-@return the new map of hashes.
-"""
-def download_urls(dir, urls, hashes, algo):
-    for url in urls:
-        stdout.write('[download_urls] INFO: Media from %s:\t\t' % (url))
-        ext = url.split('.')[-1]
-        name = url.split('/')[-1]
-        img = requests.get(url).content
-        hash = algo(img).hexdigest()
-        if(hash not in hashes):
-            hashes[hash] = name
-            stdout.write('Downloading as %s\n' % (hash + '.' + ext))
-            with open(os.path.join(dir, hash + '.' + ext), 'wb') as file_out:
-                file_out.write(img)
-        else:
-            stdout.write('Duplicate image of %s\n' % hashes[hash])
-    return hashes
 
 
 """
@@ -155,9 +99,9 @@ def download_media(url, posts, include_vids, dst):
                 src = 'https://c4.coomer.party' + parent['href']
                 vid_urls.append(src)
             
-        hashes = download_urls(pics_dst, img_urls, hashes, md5)
+        hashes = download_urls(pics_dst, img_urls, hashes=hashes)
         if(include_vids):
-            hashes = download_urls(vids_dst, vid_urls, hashes, md5)
+            hashes = download_urls(vids_dst, vid_urls, hashes=hashes)
         
     return len(hashes)
 
@@ -206,6 +150,7 @@ def main(url, dst, vids):
     # Download all media from the posts
     cnt = download_media(url, posts, vids, dst)
     stdout.write('[main] INFO: Successfully downloaded (%d) pieces of media.\n' % (cnt))
+
 
 """
 Entry point
