@@ -29,4 +29,4 @@ This is required to send the network requests to query the target website and do
 This is required to parse the webpage more easily. This requirement is planned to be removed in the future.
 
 # Disclaimer
-The website that this scraper targets is known to host media that is taken from a pay-per-view service without the consent of the original owner. By accessing this website (through a web-browser or the scraper), you are willfully viewing this stolen media. The user of the scraper is fully responsible for any consequences that may occur from these actions, and the developer of this scraper is not responsible for how the user chooses to act.
+The website that this scraper targets is known to host media that is taken from a pay-per-view service without the consent of the original owner. By accessing this website (through a web browser or the scraper), you are willfully viewing this stolen media. The user of the scraper is fully responsible for any consequences that may occur from these actions, and the developer of this scraper is not responsible for how the user chooses to act.
