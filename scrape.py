@@ -1,6 +1,5 @@
 from scraping_utils.scraping_utils import compute_file_hashes, download_urls
 from bs4 import BeautifulSoup
-from more_itertools import last
 from sys import stdout, argv
 from hashlib import md5
 import requests 
