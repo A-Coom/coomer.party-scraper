@@ -10,6 +10,7 @@ import re
 
 IMG_EXTS = [ 'jpg', 'jpeg', 'png', 'gif' ]
 VID_EXTS = [ 'mp4', 'm4v']
+PER_PAGE = 50
 
 
 """
@@ -19,7 +20,7 @@ Get a list of post links for a given coomer.party page.
 """
 def fetch_page_entries(page):
     ret = []
-    tags = page.find_all('h2', class_='post-card__heading')
+    tags = page.find_all('article', class_='post-card')
     for post in tags:
         link = post.find('a')['href']
         ret.append(link)
@@ -38,12 +39,19 @@ def iterate_pages(url, main_page, max_offset):
     ret = []
     curr_offset = 0
     curr_page = main_page
+    success = False
     while(curr_offset <= max_offset):
-        stdout.write('[iterate_pages] INFO: Parsing page %d...\n' % (curr_offset / 25 + 1))
+        stdout.write('[iterate_pages] INFO: Parsing page %d...\n' % (curr_offset / PER_PAGE + 1))
         ret = ret + fetch_page_entries(curr_page)
-        curr_offset = curr_offset + 25
-        time.sleep(1)
-        res = requests.get(url + '?o=' + str(curr_offset))
+        curr_offset = curr_offset + PER_PAGE
+        time.sleep(3)
+        while(not success):
+            try:
+                res = requests.get(url + '?o=' + str(curr_offset))
+                success = True
+            except:
+                stdout.write('[iterate_pages] ERROR: Failed page %d. Retrying.\n' % (curr_offset / PER_PAGE + 1))
+        success = False
         curr_page = BeautifulSoup(res.content, 'html.parser')
     return ret
 
@@ -59,8 +67,8 @@ Download media from posts on coomer.party
 def download_media(url, posts, include_vids, dst):
     stdout.write('[download_media] INFO: Computing hashes of existing files.\n')
     hashes = {}
-    pics_dst = os.path.join(dst, 'pics');
-    vids_dst = os.path.join(dst, 'vids');
+    pics_dst = os.path.join(dst, 'Pics');
+    vids_dst = os.path.join(dst, 'Vids');
     if(os.path.isdir(pics_dst)):
         hashes = compute_file_hashes(pics_dst, IMG_EXTS, md5, hashes)
     else:
@@ -83,7 +91,7 @@ def download_media(url, posts, include_vids, dst):
             
         img_urls = []
         for parent in img_parents:
-                src = 'https://www.coomer.party' + parent['href']
+                src = parent['href']
                 img_urls.append(src)
         
         if(include_vids):
@@ -95,12 +103,13 @@ def download_media(url, posts, include_vids, dst):
                 
             vid_urls = []
             for parent in vid_parents:
-                src = 'https://c4.coomer.party' + parent['href']
+                src = parent['href']
                 vid_urls.append(src)
             
         hashes = download_urls(pics_dst, img_urls, hashes=hashes)
         if(include_vids):
             hashes = download_urls(vids_dst, vid_urls, hashes=hashes)
+        time.sleep(1)
         
     return len(hashes)
 
@@ -133,10 +142,9 @@ def main(url, dst, vids):
         
     # Calculate the number of pages and posts
     try:
-        next_button = main_page.find(title='Next page').parent
-        max_page = next_button.find_previous('li').find("a")['href']
+        max_page = main_page.findAll(class_='pagination-mobile')[-1]['href']
         max_offset = int(str(max_page).split('=')[-1])
-        max_page = max_offset / 25 + 1
+        max_page = max_offset / PER_PAGE + 1
         stdout.write('[main] INFO: Discovered %d pages.\n' % max_page)
     except:
         max_offset = 1
