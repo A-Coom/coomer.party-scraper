@@ -9,6 +9,10 @@ A coomer.party scraper to download all media from a specified artist.
 
 The URL must be the landing page for a specific artist. It may not be a post for an artist. It should also be noted that downloading videos takes a significantly longer time than a single image.
 
+# Script Usage
+- run script using bash: `bash ./runner_script.sh`
+- Follow onscreen prompts
+
 # Requirements
 In its current state, this scraper requires: requests and bs4.
 
