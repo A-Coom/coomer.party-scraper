@@ -5,7 +5,7 @@
 
 
 #Globals 
-PYTHON="python3.10"
+PYTHON="python3"
 VIDEO_FLAG="include_videos"
 
 BASE_URL=""
