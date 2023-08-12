@@ -2,12 +2,16 @@
 A coomer.party scraper to download all media from a specified artist.
 
 # Usage
+## Platform Agnositic
 `python3 ./scraper.py <url> <download_dir> <include_videos>`
 * `url` - URL for the creator of interest.
 * `download_dir` - Destination directory for the media to be saved to.
 * `include_videos` - If true, videos will also be saved.
 
 The URL must be the landing page for a specific artist. It may not be a post for an artist. It should also be noted that downloading videos takes a significantly longer time than a single image.
+
+## Wrappers
+Wrapper scripts for specific platforms are available in `bin/`. If you do not see a wrapper script for your platform of choice, please use the platform agnostic approach described above. Wrapper scripts are accepted via pull requests.
 
 # Requirements
 In its current state, this scraper requires: requests and bs4.
