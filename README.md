@@ -1,5 +1,5 @@
 # Coomer.Party Scraper
-A coomer.party scraper to download all media from a specified artist.
+A coomer.party scraper to download all media from a specified artist using a multithreading orchestrator in Python.
 
 # Usage
 ## IMPORTANT
