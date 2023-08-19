@@ -2,15 +2,34 @@ from scraping_utils.scraping_utils import compute_file_hashes, download_urls
 from bs4 import BeautifulSoup
 from sys import stdout, argv
 from hashlib import md5
+from threading import Thread, active_count
 import requests 
 import time
 import os
 import re
+import math
 
 
 IMG_EXTS = [ 'jpg', 'jpeg', 'png', 'gif' ]
 VID_EXTS = [ 'mp4', 'm4v']
 PER_PAGE = 50
+MAX_THREADS = 8
+
+
+"""
+A class to download a URL to a directory on a separate thread.
+"""
+class DownloadThread(Thread):
+    def __init__(self, url, dst, hashes):
+        Thread.__init__(self)
+        self.url = url
+        self.dst = dst
+        self.hashes = hashes
+    
+    def run(self):
+        self.is_alive = True
+        self.hashes = download_urls(self.dst, [self.url], hashes=self.hashes)
+        self.is_alive = False
 
 
 """
@@ -26,8 +45,8 @@ def fetch_page_entries(page):
         ret.append(link)
         stdout.write('[fetch_page_entries] Discovered entry: %s\n' % (link))
     return ret
-    
-    
+
+
 """
 Iterate the pages of coomer.party to get all posts for a creator.
 @param url - Base URL for the creator.
@@ -57,12 +76,70 @@ def iterate_pages(url, main_page, max_offset):
 
 
 """
+Determine the download directory based on the extension of a URL
+@param url - URL to use for reference.
+@param pics_dst - Destination if URL is for a picture.
+@param vids_dst - Destination if URL is for a video.
+
+"""
+def get_download_dst(url, pics_dst, vids_dst):
+    for ext in VID_EXTS:
+        if url.endswith(ext):
+            return vids_dst
+    return pics_dst
+
+
+"""
+Orchestrate multi-threaded downloads.
+@param urls - List of urls to download.
+@param pics_dst - Destination for pictures.
+@param vids_dst - Destination for videos.
+@param hashes - Dictionary of hashes for existing downloaded media.
+@return the updated hash table.
+"""
+def multithread_download(urls, pics_dst, vids_dst, hashes):
+    stdout.write('[multithread_download] INFO: Downloading %d urls.\n' % (len(urls)))
+    threads = []
+    pos = 0
+    for i in range(0, MAX_THREADS):
+        if(pos >= len(urls)):
+            break
+        thread_url = urls[pos]
+        thread_dst = get_download_dst(thread_url, pics_dst, vids_dst)
+        threads.append(DownloadThread(thread_url, thread_dst, hashes))
+        threads[-1].start()
+        pos = pos + 1
+
+    while(pos < len(urls)):
+        for thread in threads:
+            if(not thread.is_alive):
+                hashes.update(thread.hashes)
+                thread_url = urls[pos]
+                thread_dst = get_download_dst(thread_url, pics_dst, vids_dst)
+                thread = DownloadThread(thread_url, thread_dst, hashes);
+                thread.start()
+                pos = pos + 1
+                if(pos >= len(urls)):
+                    break
+        time.sleep(3)
+    
+    waiting = active_count() - 1
+    while(waiting > 0):
+        waiting = active_count() - 1
+        if(waiting > 0):
+            print("[multithread_download] INFO: Still downloading %d media.\n" % (waiting))
+            time.sleep(10)
+    
+    return hashes
+
+
+"""
 Download media from posts on coomer.party
 @param url - Base URL for the creator.
 @param posts - List of posts for the creator.
 @param include_vids - Boolean for if to include videos.
 @param dst - Destination directory for the downloads. Videos to be stored in a sub-directory.
-@return the total number of media entries downloaded.
+@return the total number of media entries downloaded including previous sessions.
 """
 def download_media(url, posts, include_vids, dst):
     stdout.write('[download_media] INFO: Computing hashes of existing files.\n')
@@ -78,7 +155,7 @@ def download_media(url, posts, include_vids, dst):
             hashes = compute_file_hashes(vids_dst, VID_EXTS, md5, hashes)
         else:
             os.mkdir(vids_dst)
-        
+    url_list = []
     for post in posts:
         stdout.write('[download_media] INFO: Processing (%s)\n' % post)
         res = requests.get('https://coomer.party' + post.strip())
@@ -86,31 +163,25 @@ def download_media(url, posts, include_vids, dst):
         try:
             img_parents = page.find('div', class_='post__files').find_all('a')
         except:
-            stdout.write('[download_media] INFO: No images found.\n')
             img_parents = []
             
-        img_urls = []
         for parent in img_parents:
                 src = parent['href']
-                img_urls.append(src)
+                url_list.append(src)
         
         if(include_vids):
             try:
                 vid_parents = page.find('ul', class_='post__attachments').find_all('a')
             except:
-                stdout.write('[download_media] INFO: No videos found.\n')
                 vid_parents = []
-                
-            vid_urls = []
+            
             for parent in vid_parents:
                 src = parent['href']
-                vid_urls.append(src)
-            
-        hashes = download_urls(pics_dst, img_urls, hashes=hashes)
-        if(include_vids):
-            hashes = download_urls(vids_dst, vid_urls, hashes=hashes)
+                url_list.append(src)
+                
         time.sleep(1)
         
+    hashes = multithread_download(url_list, pics_dst, vids_dst, hashes)
     return len(hashes)
 
 
@@ -142,9 +213,9 @@ def main(url, dst, vids):
         
     # Calculate the number of pages and posts
     try:
-        max_page = main_page.findAll(class_='pagination-mobile')[-1]['href']
-        max_offset = int(str(max_page).split('=')[-1])
-        max_page = max_offset / PER_PAGE + 1
+        total_posts = main_page.find(id='paginator-top').find('small').text
+        max_page = math.ceil(int(total_posts.split('of ')[-1]) / PER_PAGE)
+        max_offset = PER_PAGE * (max_page - 1)
         stdout.write('[main] INFO: Discovered %d pages.\n' % max_page)
     except:
         max_offset = 1
