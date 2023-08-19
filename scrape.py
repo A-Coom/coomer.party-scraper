@@ -98,31 +98,21 @@ Orchestrate multi-threaded downloads.
 @return the updated hash table.
 """
 def multithread_download(urls, pics_dst, vids_dst, hashes):
-    stdout.write('[multithread_download] INFO: Downloading %d urls.\n' % (len(urls)))
-    threads = []
+    stdout.write('[multithread_download] INFO: Downloading from %d URLs.\n' % (len(urls)))
     pos = 0
-    for i in range(0, MAX_THREADS):
-        if(pos >= len(urls)):
-            break
-        thread_url = urls[pos]
-        thread_dst = get_download_dst(thread_url, pics_dst, vids_dst)
-        threads.append(DownloadThread(thread_url, thread_dst, hashes))
-        threads[-1].start()
-        pos = pos + 1
-
     while(pos < len(urls)):
-        for thread in threads:
-            if(not thread.is_alive):
-                hashes.update(thread.hashes)
-                thread_url = urls[pos]
-                thread_dst = get_download_dst(thread_url, pics_dst, vids_dst)
-                thread = DownloadThread(thread_url, thread_dst, hashes);
-                thread.start()
-                pos = pos + 1
-                if(pos >= len(urls)):
-                    break
-        time.sleep(3)
-    
+        download_threads = active_count() - 1
+        while(download_threads < MAX_THREADS):
+            time.sleep(1.25)
+            thread_url = urls[pos]
+            thread_dst = get_download_dst(thread_url, pics_dst, vids_dst)
+            thread = DownloadThread(thread_url, thread_dst, hashes);
+            thread.start()
+            pos = pos + 1
+            download_threads = download_threads + 1
+            if(pos >= len(urls)):
+                break
+
     waiting = active_count() - 1
     while(waiting > 0):
         waiting = active_count() - 1
@@ -218,8 +208,8 @@ def main(url, dst, vids):
         max_offset = PER_PAGE * (max_page - 1)
         stdout.write('[main] INFO: Discovered %d pages.\n' % max_page)
     except:
-        max_offset = 1
         max_page = 1
+        max_offset = 1
         stdout.write('[main] INFO: Discovered %d page.\n' % max_page)
         
     # Iterate the pages to get all post links
