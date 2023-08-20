@@ -204,7 +204,6 @@ def main(url, dst, vids):
         
     # Calculate the number of pages and posts
     try:
-        x = 1/0
         total_posts = main_page.find(id='paginator-top').find('small').text
         max_page = math.ceil(int(total_posts.split('of ')[-1]) / PER_PAGE)
         max_offset = PER_PAGE * (max_page - 1)
