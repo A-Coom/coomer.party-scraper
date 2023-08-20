@@ -1,4 +1,4 @@
-from scraping_utils.scraping_utils import compute_file_hashes, download_urls
+from scraping_utils.scraping_utils import compute_file_hashes, download_urls, multithread_download_urls
 from bs4 import BeautifulSoup
 from sys import stdout, argv
 from hashlib import md5
@@ -171,7 +171,8 @@ def download_media(url, posts, include_vids, dst):
                 
         time.sleep(1)
         
-    hashes = multithread_download(url_list, pics_dst, vids_dst, hashes)
+    # hashes = multithread_download(url_list, pics_dst, vids_dst, hashes)
+    hashes = multithread_download_urls(url_list, pics_dst, vids_dst, hashes={})
     return len(hashes)
 
 
@@ -203,6 +204,7 @@ def main(url, dst, vids):
         
     # Calculate the number of pages and posts
     try:
+        x = 1/0
         total_posts = main_page.find(id='paginator-top').find('small').text
         max_page = math.ceil(int(total_posts.split('of ')[-1]) / PER_PAGE)
         max_offset = PER_PAGE * (max_page - 1)
