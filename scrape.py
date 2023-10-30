@@ -10,31 +10,17 @@ import re
 import math
 
 
+"""
+Convenience globals
+"""
 IMG_EXTS = [ 'jpg', 'jpeg', 'png', 'gif' ]
 VID_EXTS = [ 'mp4', 'm4v']
 PER_PAGE = 50
-MAX_THREADS = 8
 
 
 """
-A class to download a URL to a directory on a separate thread.
-"""
-class DownloadThread(Thread):
-    def __init__(self, url, dst, hashes):
-        Thread.__init__(self)
-        self.url = url
-        self.dst = dst
-        self.hashes = hashes
-    
-    def run(self):
-        self.is_alive = True
-        self.hashes = download_urls(self.dst, [self.url], hashes=self.hashes)
-        self.is_alive = False
-
-
-"""
-Get a list of post links for a given coomer.party page.
-@param page - Page for coomer.party
+Get a list of post links for a given coomer.su page.
+@param page - Page for coomer.su
 @return a list of entries.
 """
 def fetch_page_entries(page):
@@ -48,7 +34,7 @@ def fetch_page_entries(page):
 
 
 """
-Iterate the pages of coomer.party to get all posts for a creator.
+Iterate the pages of coomer.su to get all posts for a creator.
 @param url - Base URL for the creator.
 @param main_page - Starting page for the creator.
 @param last_page - Number of pages for the creator.
@@ -76,55 +62,7 @@ def iterate_pages(url, main_page, max_offset):
 
 
 """
-Determine the download directory based on the extension of a URL
-@param url - URL to use for reference.
-@param pics_dst - Destination if URL is for a picture.
-@param vids_dst - Destination if URL is for a video.
-
-"""
-def get_download_dst(url, pics_dst, vids_dst):
-    for ext in VID_EXTS:
-        if url.endswith(ext):
-            return vids_dst
-    return pics_dst
-
-
-"""
-Orchestrate multi-threaded downloads.
-@param urls - List of urls to download.
-@param pics_dst - Destination for pictures.
-@param vids_dst - Destination for videos.
-@param hashes - Dictionary of hashes for existing downloaded media.
-@return the updated hash table.
-"""
-def multithread_download(urls, pics_dst, vids_dst, hashes):
-    stdout.write('[multithread_download] INFO: Downloading from %d URLs.\n' % (len(urls)))
-    pos = 0
-    while(pos < len(urls)):
-        download_threads = active_count() - 1
-        while(download_threads < MAX_THREADS):
-            time.sleep(1.25)
-            thread_url = urls[pos]
-            thread_dst = get_download_dst(thread_url, pics_dst, vids_dst)
-            thread = DownloadThread(thread_url, thread_dst, hashes);
-            thread.start()
-            pos = pos + 1
-            download_threads = download_threads + 1
-            if(pos >= len(urls)):
-                break
-
-    waiting = active_count() - 1
-    while(waiting > 0):
-        waiting = active_count() - 1
-        if(waiting > 0):
-            print("[multithread_download] INFO: Still downloading %d media.\n" % (waiting))
-            time.sleep(10)
-    
-    return hashes
-
-
-"""
-Download media from posts on coomer.party
+Download media from posts on coomer.su
 @param url - Base URL for the creator.
 @param posts - List of posts for the creator.
 @param include_vids - Boolean for if to include videos.
@@ -148,7 +86,7 @@ def download_media(url, posts, include_vids, dst):
     url_list = []
     for post in posts:
         stdout.write('[download_media] INFO: Processing (%s)\n' % post)
-        res = requests.get('https://coomer.party' + post.strip())
+        res = requests.get('https://coomer.su' + post.strip())
         page = BeautifulSoup(res.content, 'html.parser')
         try:
             img_parents = page.find('div', class_='post__files').find_all('a')
@@ -171,13 +109,12 @@ def download_media(url, posts, include_vids, dst):
                 
         time.sleep(1)
         
-    # hashes = multithread_download(url_list, pics_dst, vids_dst, hashes)
     hashes = multithread_download_urls(url_list, pics_dst, vids_dst, hashes={})
     return len(hashes)
 
 
 """
-Driver function to scrape coomer.party creators.
+Driver function to scrape coomer.su creators.
 @param url - URL of the creator, not a specific post.
 @param dst - Destination directory to store the downloads.
 @param vids - Boolean for if to include videos in downloading.
