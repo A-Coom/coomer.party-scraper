@@ -1,115 +1,36 @@
-from scraping_utils.scraping_utils import compute_file_hashes, download_urls, multithread_download_urls
-from bs4 import BeautifulSoup
+from scraping_utils.scraping_utils import compute_file_hashes, download_urls, multithread_download_urls, IMG_EXTS, VID_EXTS
 from sys import stdout, argv
 from hashlib import md5
-from threading import Thread, active_count
 import requests 
-import time
 import os
 import re
-import math
-
-
-"""
-Convenience globals
-"""
-IMG_EXTS = [ 'jpg', 'jpeg', 'png', 'gif' ]
-VID_EXTS = [ 'mp4', 'm4v']
-PER_PAGE = 50
-
-
-"""
-Get a list of post links for a given coomer.su page.
-@param page - Page for coomer.su
-@return a list of entries.
-"""
-def fetch_page_entries(page):
-    ret = []
-    tags = page.find_all('article', class_='post-card')
-    for post in tags:
-        link = post.find('a')['href']
-        ret.append(link)
-        stdout.write('[fetch_page_entries] Discovered entry: %s\n' % (link))
-    return ret
-
-
-"""
-Iterate the pages of coomer.su to get all posts for a creator.
-@param url - Base URL for the creator.
-@param main_page - Starting page for the creator.
-@param last_page - Number of pages for the creator.
-@return a list of all posts for the creator.
-"""
-def iterate_pages(url, main_page, max_offset):
-    ret = []
-    curr_offset = 0
-    curr_page = main_page
-    success = False
-    while(curr_offset <= max_offset):
-        stdout.write('[iterate_pages] INFO: Parsing page %d...\n' % (curr_offset / PER_PAGE + 1))
-        ret = ret + fetch_page_entries(curr_page)
-        curr_offset = curr_offset + PER_PAGE
-        time.sleep(3)
-        while(not success):
-            try:
-                res = requests.get(url + '?o=' + str(curr_offset))
-                success = True
-            except:
-                stdout.write('[iterate_pages] ERROR: Failed page %d. Retrying.\n' % (curr_offset / PER_PAGE + 1))
-        success = False
-        curr_page = BeautifulSoup(res.content, 'html.parser')
-    return ret
 
 
 """
 Download media from posts on coomer.su
-@param url - Base URL for the creator.
-@param posts - List of posts for the creator.
+@param urls - List of urls for the media of the creator.
 @param include_vids - Boolean for if to include videos.
 @param dst - Destination directory for the downloads. Videos to be stored in a sub-directory.
 @return the total number of media entries downloaded including previous sessions.
 """
-def download_media(url, posts, include_vids, dst):
+def download_media(urls, include_vids, dst):
     stdout.write('[download_media] INFO: Computing hashes of existing files.\n')
     hashes = {}
     pics_dst = os.path.join(dst, 'Pics');
     vids_dst = os.path.join(dst, 'Vids');
+    
     if(os.path.isdir(pics_dst)):
         hashes = compute_file_hashes(pics_dst, IMG_EXTS, md5, hashes)
     else:
         os.mkdir(pics_dst)
+
     if(include_vids):
         if(os.path.isdir(vids_dst)):
             hashes = compute_file_hashes(vids_dst, VID_EXTS, md5, hashes)
         else:
             os.mkdir(vids_dst)
-    url_list = []
-    for post in posts:
-        stdout.write('[download_media] INFO: Processing (%s)\n' % post)
-        res = requests.get('https://coomer.su' + post.strip())
-        page = BeautifulSoup(res.content, 'html.parser')
-        try:
-            img_parents = page.find('div', class_='post__files').find_all('a')
-        except:
-            img_parents = []
-            
-        for parent in img_parents:
-                src = parent['href']
-                url_list.append(src)
         
-        if(include_vids):
-            try:
-                vid_parents = page.find('ul', class_='post__attachments').find_all('a')
-            except:
-                vid_parents = []
-            
-            for parent in vid_parents:
-                src = parent['href']
-                url_list.append(src)
-                
-        time.sleep(1)
-        
-    hashes = multithread_download_urls(url_list, pics_dst, vids_dst, hashes={})
+    hashes = multithread_download_urls(urls, pics_dst, vids_dst, hashes=hashes)
     return len(hashes)
 
 
@@ -122,6 +43,7 @@ Driver function to scrape coomer.su creators.
 def main(url, dst, vids):
     # Sanitize the URL
     url = 'https://www.' + re.sub('(www\.)|(https?://)', '', url)
+    if(url[-1] == '/'): url = url[:-1]
     url_sections = url.split('/')
     if(url_sections[-2] == 'post'):
         stdout.write('[main] INFO: The URL must be for a creator, not a specific post.\n')
@@ -129,32 +51,32 @@ def main(url, dst, vids):
     elif(url_sections[-4] == 'data'):
         stdout.write('[main] INFO: The URL must be for a creator, not a specific media.\n')
         return
-        
-    # Get the main page
+          
+    # Craft the API URL and perform a GET request
     try:
-        res = requests.get(url)
-        main_page = BeautifulSoup(res.content, 'html.parser')
+        api_url = f'https://coomer.su/api/v1/{url_sections[-3]}/user/{url_sections[-1]}'
+        res = requests.get(api_url, headers={'accept': 'application/json'})
+        assert(res.status_code == 200)
     except:
-        stdout.write('[main] INFO: Failed to fetch from (%s).\n' % url)
-        stdout.write('[main] INFO: Confirm that there are no mistakes with the given URL.\n')
+        stdout.write('[main] INFO: Failed to fetch using API (%s)\n' % api_url)
+        stdout.write('[main] INFO: Status code: %d\n' % res.status_code)
         return
         
-    # Calculate the number of pages and posts
-    try:
-        total_posts = main_page.find(id='paginator-top').find('small').text
-        max_page = math.ceil(int(total_posts.split('of ')[-1]) / PER_PAGE)
-        max_offset = PER_PAGE * (max_page - 1)
-        stdout.write('[main] INFO: Discovered %d pages.\n' % max_page)
-    except:
-        max_page = 1
-        max_offset = 1
-        stdout.write('[main] INFO: Discovered %d page.\n' % max_page)
-        
-    # Iterate the pages to get all post links
-    posts = iterate_pages(url, main_page, max_offset)
+    # Parse the response to get links for all media, excluding videos if necessary
+    urls = []
+    base = 'http://www.coomer.su'
+    for post in res.json():
+        if('path' in post['file']):
+            ext = post['file']['path'].split('.')[-1]
+            if(not vids and ext in VID_EXTS): continue
+            urls.append('%s%s' % (base, post['file']['path']))
+        for attachment in post['attachments']:
+            ext = attachment['path'].split('.')[-1]
+            if(not vids and ext in VID_EXTS): continue
+            urls.append('%s%s' % (base, attachment['path']))
     
     # Download all media from the posts
-    cnt = download_media(url, posts, vids, dst)
+    cnt = download_media(urls, vids, dst)
     stdout.write('[main] INFO: Successfully downloaded (%d) pieces of media.\n' % (cnt))
 
 
