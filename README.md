@@ -1,4 +1,4 @@
-# Coomer.Party (Coomer.su) Scraper
+# Coomer.Party (Coomer.su) Scraper / Downloader
 A coomer.party scraper to download all media from a specified artist using a multithreading orchestrator in Python.
 
 # Usage
@@ -19,7 +19,7 @@ The URL must be the landing page for a specific artist. It may not be a post for
 Wrapper scripts for specific platforms are available in `bin/`. If you do not see a wrapper script for your platform of choice, please use the platform agnostic approach described above. Wrapper scripts are accepted via pull requests.
 
 # Requirements
-In its current state, this scraper requires: requests and bs4.
+In its current state, this scraper requires: requests.
 
 You can install these requirements by using:
 
@@ -32,13 +32,8 @@ For more information on the individual requirements and how to install them manu
 
 This is required to send the network requests to query the target website and download the media.
 
-### bs4
-`python3 -m pip install bs4`
-
-This is required to parse the webpage more easily. This requirement is planned to be removed in the future.
-
 # A Note on Scraping
-It is entirely possible that this will not work in the future. Web scraping is fragile in that if the layout of the webpage changes, then any scraping tool may parse the new page incorrectly. This version is confirmed to work as of October 30, 2023. If you encounter any problems after this date, please open an issue.
+It is entirely possible that this will not work in the future. Web scraping is fragile in that if the layout of the webpage changes, then any scraping tool may parse the new page incorrectly. This version is confirmed to work as of December 02, 2023. This approach uses the API, which should not break in the near future. Nevertheless, if you encounter any problems after the aformentioned date, please open an issue.
 
 # Disclaimer
 The website that this scraper targets is known to host media that is taken from a pay-per-view service without the consent of the original owner. By accessing this website (through a web browser or the scraper), you are willfully viewing this stolen media. The user of the scraper is fully responsible for any consequences that may occur from these actions, and the developer of this scraper is not responsible for how the user chooses to act.
