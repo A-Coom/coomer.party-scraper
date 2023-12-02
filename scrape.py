@@ -86,10 +86,19 @@ Entry point
 if(__name__ == '__main__'):
     stdout.write('\n')
     if(len(argv) != 4):
-        stdout.write('USAGE: %s <url> <download_dir> <include_videos>\n' % (argv[0]))
+        url = input('Enter Coomer URL: ')
+        dst = input('Enter download dir (./out/): ')
+        vid = input('Include videos (Y/N): ')
     else:
-        if(not os.path.isdir(argv[2])):
-            os.mkdir(argv[2])
-        argv[3] = argv[3].lower()[0]
-        main(argv[1], argv[2], (argv[3] == 't' or argv[3] == 'y'))
+        url = argv[1]
+        dst = argv[2]
+        vid = argv[3].lower()[0]
+    
+    if(len(dst) == 0):
+        dst = './out'
+    if(not os.path.isdir(dst)):
+        os.mkdir(dst)
+        
+    main(url, dst, (vid == 't' or vid == 'y'))
+    input('---Press any key to exit---')
     stdout.write('\n')
