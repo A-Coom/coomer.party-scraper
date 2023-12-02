@@ -2,6 +2,8 @@
 A coomer.party scraper to download all media from a specified artist using a multithreading orchestrator in Python.
 
 # Usage
+The easiest route is to download the latest release, run the executable, and follow the prompts.
+
 ## IMPORTANT
 Before using a wrapper or the platform agnositic command below, you must intialize the `scraping_utils` submodule. To do this, run the following command while in the repository directory: `git clone https://github.com/A-Coom/scraping_utils.git`
 
