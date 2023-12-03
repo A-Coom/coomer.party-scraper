@@ -32,7 +32,6 @@ def download_media(urls, include_vids, dst):
             hashes = compute_file_hashes(vids_dst, VID_EXTS, md5, hashes)
         else:
             os.mkdir(vids_dst)
-    return
         
     hashes = multithread_download_urls(urls, pics_dst, vids_dst, hashes=hashes)
     return len(hashes)
