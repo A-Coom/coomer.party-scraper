@@ -6,6 +6,9 @@ import os
 import re
 
 
+POSTS_PER_FETCH = 50
+
+
 """
 Download media from posts on coomer.su
 @param urls - List of urls for the media of the creator.
@@ -32,6 +35,27 @@ def download_media(urls, include_vids, dst):
         
     hashes = multithread_download_urls(urls, pics_dst, vids_dst, hashes=hashes)
     return len(hashes)
+    
+    
+"""
+Fetch a chunk of posts.
+@param service - Service that the creator is hosted on.
+@param creator - Name of the creator.
+@param offset - Offset to begin from, must be divisible by 50 or None.
+@return a list of posts
+"""
+def fetch_posts(service, creator, offset=None):
+    try:
+        api_url = 'https://coomer.su/api/v1/%s/user/%s' % (service, creator)
+        if(offset is not None):
+            api_url = '%s?o=%d' % (api_url, offset)
+        res = requests.get(api_url, headers={'accept': 'application/json'})
+        assert(res.status_code == 200)
+        return res.json()
+    except:
+        stdout.write('[fetch_posts] ERROR: Failed to fetch using API (%s)\n' % api_url)
+        stdout.write('[fetch_posts] ERROR: Status code: %d\n' % res.status_code)
+        return []
 
 
 """
@@ -51,21 +75,27 @@ def main(url, dst, vids):
     elif(url_sections[-4] == 'data'):
         stdout.write('[main] INFO: The URL must be for a creator, not a specific media.\n')
         return
-          
-    # Craft the API URL and perform a GET request
-    try:
-        api_url = f'https://coomer.su/api/v1/{url_sections[-3]}/user/{url_sections[-1]}'
-        res = requests.get(api_url, headers={'accept': 'application/json'})
-        assert(res.status_code == 200)
-    except:
-        stdout.write('[main] INFO: Failed to fetch using API (%s)\n' % api_url)
-        stdout.write('[main] INFO: Status code: %d\n' % res.status_code)
-        return
+        
+    # Iterate the pages to get all posts
+    all_posts = []
+    offset = 0
+    while(True):
+        stdout.write('[main] INFO: Fetching posts %d - %d...\n' % (offset + 1, offset + POSTS_PER_FETCH))
+        curr_posts = fetch_posts(url_sections[-3], url_sections[-1], offset=offset)
+        if(len(curr_posts) % POSTS_PER_FETCH != 0):
+            stdout.write('[main] INFO: Final post fetch completed!\n')
+            break
+        elif(len(curr_posts) == 0):
+            stdout.write('[main] INFO: Attempted to fetch more posts than existed. Moving on...\n')
+            break
+        all_posts = all_posts + curr_posts
+        offset += POSTS_PER_FETCH
         
     # Parse the response to get links for all media, excluding videos if necessary
+    stdout.write('[main] INFO: Parsing media from the %d posts.\n' % (len(all_posts)))
     urls = []
     base = 'http://www.coomer.su'
-    for post in res.json():
+    for post in all_posts:
         if('path' in post['file']):
             ext = post['file']['path'].split('.')[-1]
             if(not vids and ext in VID_EXTS): continue
@@ -74,6 +104,7 @@ def main(url, dst, vids):
             ext = attachment['path'].split('.')[-1]
             if(not vids and ext in VID_EXTS): continue
             urls.append('%s%s' % (base, attachment['path']))
+    stdout.write('[main] INFO: Found %d media files to download.\n' % (len(urls)))
     
     # Download all media from the posts
     cnt = download_media(urls, vids, dst)
@@ -100,5 +131,5 @@ if(__name__ == '__main__'):
         os.mkdir(dst)
         
     main(url, dst, (vid == 't' or vid == 'y'))
-    input('---Press any key to exit---')
+    input('---Press enter to exit---')
     stdout.write('\n')
