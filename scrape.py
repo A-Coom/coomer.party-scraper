@@ -82,14 +82,14 @@ def main(url, dst, vids):
     while(True):
         stdout.write('[main] INFO: Fetching posts %d - %d...\n' % (offset + 1, offset + POSTS_PER_FETCH))
         curr_posts = fetch_posts(url_sections[-3], url_sections[-1], offset=offset)
+        all_posts = all_posts + curr_posts
+        offset += POSTS_PER_FETCH
         if(len(curr_posts) % POSTS_PER_FETCH != 0):
             stdout.write('[main] INFO: Final post fetch completed!\n')
             break
         elif(len(curr_posts) == 0):
             stdout.write('[main] INFO: Attempted to fetch more posts than existed. Moving on...\n')
             break
-        all_posts = all_posts + curr_posts
-        offset += POSTS_PER_FETCH
         
     # Parse the response to get links for all media, excluding videos if necessary
     stdout.write('[main] INFO: Parsing media from the %d posts.\n' % (len(all_posts)))
