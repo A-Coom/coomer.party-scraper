@@ -1,12 +1,79 @@
-from scraping_utils.scraping_utils import compute_file_hashes, download_urls, multithread_download_urls, IMG_EXTS, VID_EXTS
+from scraping_utils.scraping_utils import compute_file_hashes, DownloadThread, multithread_download_urls_special, IMG_EXTS, VID_EXTS, TOO_MANY_REQUESTS, NOT_FOUND, THROTTLE_TIME
 from sys import stdout, argv
 from hashlib import md5
 import requests 
 import os
 import re
+import time
 
 
 POSTS_PER_FETCH = 50
+
+
+"""
+A class to download a Coomer URL to a directory on a separate thread.
+The alternate coom servers (c1, c2, ..., c6) will be swapped when "too many requests" is received as a response
+"""
+class CoomerThread(DownloadThread):
+    # Coom server information
+    C_SERVER_COUNT = 6
+    F_TOKEN = 'A-Coom@github'
+    
+    # Initialize this CoomerThread
+    def __init__(self, url, dst, algo=md5, hashes={}):
+        DownloadThread.__init__(self, url, dst, algo, hashes)
+        self.base = url
+        self.server = 1
+        self.coomit()
+        
+    # Update the coom server URL from the base URL
+    def coomit(self):
+        ext = self.base.split('.')[-1]
+        name = self.base.split('/')[-1].split('.')[0]
+        t1 = name[0:2]
+        t2 = name[2:4]
+        self.url = f'https://c{self.server}.coomer.su/data/{t1}/{t2}/{name}.{ext}?f={self.F_TOKEN}.{ext}'
+        self.server = self.server + 1
+        if(self.server > self.C_SERVER_COUNT): self.server = 1
+        
+    # Perform downloading until successful, switching coom servers as "too many requests" responses are received
+    def run(self):
+        ext = self.base.split('.')[-1]
+        name = self.base.split('/')[-1].split('.')[0]
+        media = None
+        
+        try:
+            while(self.status == self.STANDBY):
+                self.status = self.DOWNLOADING
+                res = requests.get(self.url, allow_redirects=True)
+                if(res.status_code == TOO_MANY_REQUESTS):
+                    self.status = self.STANDBY
+                    self.coomit()
+                    if(self.server == 1):
+                        time.sleep(THROTTLE_TIME)
+                elif(res.status_code != NOT_FOUND):
+                    media = res.content
+            
+        except Exception as e:
+            print(e)
+            self.status = self.ERROR
+            return
+        
+        if(media is None):
+            self.status = self.ERROR
+            return
+        
+        self.status = self.HASHING
+        hash = self.algo(media).hexdigest()
+        if(hash in self.hashes):
+            self.status = self.FINISHED
+            return
+
+        self.status = self.WRITING
+        self.hashes[hash] = name
+        with open(os.path.join(self.dst, hash + '.' + ext), 'wb') as file_out:
+            file_out.write(media)
+        self.status = self.FINISHED
 
 
 """
@@ -33,7 +100,7 @@ def download_media(urls, include_vids, dst):
         else:
             os.mkdir(vids_dst)
         
-    hashes = multithread_download_urls(urls, pics_dst, vids_dst, hashes=hashes)
+    hashes = multithread_download_urls_special(CoomerThread, urls, pics_dst, vids_dst, algo=md5, hashes=hashes)
     return len(hashes)
     
     
