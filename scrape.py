@@ -53,6 +53,12 @@ class CoomerThread(DownloadThread):
                         time.sleep(THROTTLE_TIME)
                 elif(res.status_code != NOT_FOUND):
                     media = res.content
+                    
+        except requests.exceptions.Timeout:
+            self.status = self.STANDBY
+            self.coomit()
+            if(self.server == 1):
+                time.sleep(THROTTLE_TIME)
             
         except Exception as e:
             print(e)
@@ -99,6 +105,7 @@ def download_media(urls, include_vids, dst):
             hashes = compute_file_hashes(vids_dst, VID_EXTS, md5, hashes)
         else:
             os.mkdir(vids_dst)
+    stdout.write('\n')
         
     hashes = multithread_download_urls_special(CoomerThread, urls, pics_dst, vids_dst, algo=md5, hashes=hashes)
     return len(hashes)
@@ -171,11 +178,12 @@ def main(url, dst, vids):
             ext = attachment['path'].split('.')[-1]
             if(not vids and ext in VID_EXTS): continue
             urls.append('%s%s' % (base, attachment['path']))
-    stdout.write('[main] INFO: Found %d media files to download.\n' % (len(urls)))
+    stdout.write('[main] INFO: Found %d media files to download.\n\n' % (len(urls)))
     
     # Download all media from the posts
     cnt = download_media(urls, vids, dst)
-    stdout.write('[main] INFO: Successfully downloaded (%d) pieces of media.\n' % (cnt))
+    stdout.write('\n')
+    stdout.write('[main] INFO: Successfully downloaded (%d) unique media.\n\n' % (cnt))
 
 
 """
