@@ -61,7 +61,6 @@ class CoomerThread(DownloadThread):
                 time.sleep(THROTTLE_TIME)
             
         except Exception as e:
-            print(e)
             self.status = self.ERROR
             return
         
@@ -120,15 +119,15 @@ Fetch a chunk of posts.
 """
 def fetch_posts(service, creator, offset=None):
     try:
-        api_url = 'https://coomer.su/api/v1/%s/user/%s' % (service, creator)
+        api_url = f'https://coomer.su/api/v1/{service}/user/{creator}'
         if(offset is not None):
-            api_url = '%s?o=%d' % (api_url, offset)
+            api_url = f'{api_url}?o={offset}'
         res = requests.get(api_url, headers={'accept': 'application/json'})
         assert(res.status_code == 200)
         return res.json()
     except:
-        stdout.write('[fetch_posts] ERROR: Failed to fetch using API (%s)\n' % api_url)
-        stdout.write('[fetch_posts] ERROR: Status code: %d\n' % res.status_code)
+        stdout.write(f'[fetch_posts] ERROR: Failed to fetch using API ({api_url})\n')
+        stdout.write(f'[fetch_posts] ERROR: Status code: {res.status_code}\n')
         return []
 
 
@@ -153,37 +152,38 @@ def main(url, dst, vids):
     # Iterate the pages to get all posts
     all_posts = []
     offset = 0
+    stdout.write(f'[main] INFO: Fetching posts {offset + 1} - ')
     while(True):
-        stdout.write('[main] INFO: Fetching posts %d - %d...\r' % (offset + 1, offset + POSTS_PER_FETCH))
+        stdout.write(f'{offset + POSTS_PER_FETCH}...')
+        stdout.flush()
         curr_posts = fetch_posts(url_sections[-3], url_sections[-1], offset=offset)
         all_posts = all_posts + curr_posts
         offset += POSTS_PER_FETCH
+        stdout.write(f'\033[{len(str(offset)) + 3}D')
         if(len(curr_posts) % POSTS_PER_FETCH != 0):
-            stdout.write('\n[main] INFO: Final post fetch completed!\n')
             break
         elif(len(curr_posts) == 0):
-            stdout.write('\n[main] INFO: Attempted to fetch more posts than existed. Moving on...\n')
+            stdout.write(f'{offset - POSTS_PER_FETCH}...')
             break
         
     # Parse the response to get links for all media, excluding videos if necessary
-    stdout.write('[main] INFO: Parsing media from the %d posts.\n' % (len(all_posts)))
+    stdout.write(f'\n[main] INFO: Parsing media from the {len(all_posts)} posts.\n')
     urls = []
     base = 'http://www.coomer.su'
     for post in all_posts:
         if('path' in post['file']):
             ext = post['file']['path'].split('.')[-1]
             if(not vids and ext in VID_EXTS): continue
-            urls.append('%s%s' % (base, post['file']['path']))
+            urls.append(f'{base}{post["file"]["path"]}')
         for attachment in post['attachments']:
             ext = attachment['path'].split('.')[-1]
             if(not vids and ext in VID_EXTS): continue
-            urls.append('%s%s' % (base, attachment['path']))
-    stdout.write('[main] INFO: Found %d media files to download.\n\n' % (len(urls)))
+            urls.append(f'{base}{attachment["path"]}')
+    stdout.write(f'[main] INFO: Found {len(urls)} media files to download.\n\n')
     
     # Download all media from the posts
     cnt = download_media(urls, vids, dst)
-    stdout.write('\n')
-    stdout.write('[main] INFO: Successfully downloaded (%d) unique media.\n\n' % (cnt))
+    stdout.write(f'\n[main] INFO: Successfully downloaded ({cnt}) unique media.\n\n')
 
 
 """
