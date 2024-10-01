@@ -118,17 +118,23 @@ Fetch a chunk of posts.
 @return a list of posts
 """
 def fetch_posts(service, creator, offset=None):
-    try:
-        api_url = f'https://coomer.su/api/v1/{service}/user/{creator}'
-        if(offset is not None):
-            api_url = f'{api_url}?o={offset}'
-        res = requests.get(api_url, headers={'accept': 'application/json'})
-        assert(res.status_code == 200)
-        return res.json()
-    except:
+    api_url = f'https://coomer.su/api/v1/{service}/user/{creator}'
+    if(offset is not None):
+        api_url = f'{api_url}?o={offset}'
+
+    while(True):
+        try: res = requests.get(api_url, headers={'accept': 'application/json'})
+        except: pass
+
+        if(res.status_code == 429): time.sleep(THROTTLE_TIME)
+        else: break
+
+    if(res.status_code != 200):
         stdout.write(f'[fetch_posts] ERROR: Failed to fetch using API ({api_url})\n')
         stdout.write(f'[fetch_posts] ERROR: Status code: {res.status_code}\n')
         return []
+
+    return res.json()
 
 
 """
