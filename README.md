@@ -37,7 +37,7 @@ If any of the parameters are omitted, then you will be prompted for all paramete
 
 
 ## A Note on Scraping
-This version is confirmed to work as of January 17, 2024. This approach uses the API when possible, which increases the reliability that it will continue to work in the future. Nevertheless, if you encounter any problems, please open an issue.
+This version is confirmed to work as of October 1, 2024. This approach uses the API when possible, which increases the reliability that it will continue to work in the future. Nevertheless, if you encounter any problems, please open an issue.
 
 
 
