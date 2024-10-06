@@ -15,6 +15,8 @@ If a release is not available for your platform, follow the platform agnostic ap
 
 ## Platform Agnostic Usage
 
+The platform agnostic usage requires Python 3 to be installed on your system. Go to releases for executable files for easier usage.
+
 ### Submodule Dependency
 
 Before using the platform agnostic command below, you must initialize the `scraping_utils` submodule. To do this, run the following command while in the repository directory: `git clone https://github.com/A-Coom/scraping_utils.git`
@@ -28,8 +30,8 @@ In its current state, this scraper requires the requests package. You can instal
 `python3 ./scraper.py <url> <download_dir> <include_images> <include_videos>`
 * `url` - URL for the creator of interest.
 * `download_dir` - Destination directory for the media to be saved to.
-* `include_images` - If true, images will also be saved
-* `include_videos` - If true, videos will also be saved.
+* `include_images` - If true, images will be saved
+* `include_videos` - If true, videos will be saved.
 
 The URL must be the landing page for a specific artist. It may not be a post for an artist.
 
