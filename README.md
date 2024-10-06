@@ -25,9 +25,10 @@ In its current state, this scraper requires the requests package. You can instal
 `python3 -m pip install -r requirements.txt`
 
 ### Execution Command
-`python3 ./scraper.py <url> <download_dir> <include_videos>`
+`python3 ./scraper.py <url> <download_dir> <include_images> <include_videos>`
 * `url` - URL for the creator of interest.
 * `download_dir` - Destination directory for the media to be saved to.
+* `include_images` - If true, images will also be saved
 * `include_videos` - If true, videos will also be saved.
 
 The URL must be the landing page for a specific artist. It may not be a post for an artist.
@@ -37,7 +38,7 @@ If any of the parameters are omitted, then you will be prompted for all paramete
 
 
 ## A Note on Scraping
-This version is confirmed to work as of October 1, 2024. This approach uses the API when possible, which increases the reliability that it will continue to work in the future. Nevertheless, if you encounter any problems, please open an issue.
+This version is confirmed to work as of October 6, 2024. This approach uses the API when possible, which increases the reliability that it will continue to work in the future. Nevertheless, if you encounter any problems, please open an issue.
 
 
 
