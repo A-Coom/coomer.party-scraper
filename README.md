@@ -1,6 +1,6 @@
 # Coomer and Kemono Scraper / Downloader
 
-A scraper to download all media from coomer.su and kemono.su (previously coomer.party and kemono.party) uploaded by a specified artist using a multithreading orchestrator in Python.
+A scraper to download some or all media from coomer.su and kemono.su (previously coomer.party and kemono.party) uploaded by a specified artist using a multithreading orchestrator in Python.
 
 ![output](./img/output.jpg)
 
