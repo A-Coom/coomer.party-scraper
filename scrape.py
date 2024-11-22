@@ -1,10 +1,11 @@
-from scraping_utils.scraping_utils import compute_file_hashes, DownloadThread, multithread_download_urls_special, IMG_EXTS, VID_EXTS, TOO_MANY_REQUESTS, NOT_FOUND, THROTTLE_TIME
-from sys import stderr, stdout, argv
+from scraping_utils.scraping_utils import compute_file_hashes, DownloadThread, multithread_download_urls_special, IMG_EXTS, VID_EXTS, TOO_MANY_REQUESTS, NOT_FOUND, CONNECTION_RESET, THROTTLE_TIME
+from sys import stderr, stdout, argv, maxsize
 from hashlib import md5
-import requests
+import argparse
 import os
-import re
 import time
+import re
+import requests
 
 
 POSTS_PER_FETCH = 50
@@ -12,11 +13,12 @@ POSTS_PER_FETCH = 50
 
 """
 A class to download a Coomer URL to a directory on a separate thread.
-The alternate coom servers (c1, c2, ..., c6) will be swapped when "too many requests" is received as a response
+The alternate coom servers will be swapped when "too many requests" is received as a response
 """
 class CoomerThread(DownloadThread):
     # Coom server information
-    C_SERVER_COUNT = 6
+    SERVER_IDENT = 'n'
+    C_SERVER_COUNT = 4
     F_TOKEN = 'A-Coom@github'
 
     # Initialize this CoomerThread
@@ -29,55 +31,113 @@ class CoomerThread(DownloadThread):
     # Update the coom server URL from the base URL
     def coomit(self):
         ext = self.base.split('.')[-1]
+        host = self.base.split('/')[2].split('.')[1]
         name = self.base.split('/')[-1].split('.')[0]
         t1 = name[0:2]
         t2 = name[2:4]
-        self.url = f'https://c{self.server}.coomer.su/data/{t1}/{t2}/{name}.{ext}?f={self.F_TOKEN}.{ext}'
+        self.url = f'http://{self.SERVER_IDENT}{self.server}.{host}.su/data/{t1}/{t2}/{name}.{ext}?f={self.F_TOKEN}.{ext}'
         self.server = self.server + 1
         if(self.server > self.C_SERVER_COUNT): self.server = 1
 
+    # Throttle the thread
+    def throttle(self):
+        self.status = self.STANDBY
+        self.coomit()
+        if(self.server == 1):
+            time.sleep(THROTTLE_TIME)
+
+    # Safely make a streamed connection
+    def establish_stream(self, start=-1):
+        res = None
+        while(True):
+            try:
+                headers = start > 0 and { 'Range': f'bytes={start}-' } or {}
+                res = requests.get(self.url, headers=headers, stream=True, allow_redirects=True)
+                break
+            except:
+                self.throttle()
+
+            if(res.status_code == TOO_MANY_REQUESTS):
+                self.throttle()
+
+            elif(res.status_code == NOT_FOUND):
+                self.status = self.ERROR
+                break
+
+        # Return the streamed connection
+        return res
+
     # Perform downloading until successful, switching coom servers as "too many requests" responses are received
     def run(self):
-        ext = self.base.split('.')[-1]
-        name = self.base.split('/')[-1].split('.')[0]
-        media = None
+        # Craft the file name and its temporary name
+        out_name = os.path.join(self.dst, self.name)
+        tmp_name = f'{out_name}.part'
 
-        try:
-            while(self.status == self.STANDBY):
+        # Establish the streamed connection
+        self.status = self.CONNECTING
+        res = self.establish_stream()
+        if(res is None or self.status == self.ERROR):
+            return
+
+        # Track if hashing has occurred
+        did_hash = False
+        is_duplicate = False
+
+        # Open the temporary file
+        chunk_size = 1024 * 1024 * 2
+        with open(tmp_name, 'wb') as tmp_file:
+            # Download in chunks
+            while(True):
+                # Try to download the next chunk
                 self.status = self.DOWNLOADING
-                res = requests.get(self.url, allow_redirects=True)
-                if(res.status_code == TOO_MANY_REQUESTS):
-                    self.status = self.STANDBY
-                    self.coomit()
-                    if(self.server == 1):
-                        time.sleep(THROTTLE_TIME)
-                elif(res.status_code != NOT_FOUND):
-                    media = res.content
+                try: chunk = res.raw.read(chunk_size)
 
-        except requests.exceptions.Timeout:
-            self.status = self.STANDBY
-            self.coomit()
-            if(self.server == 1):
-                time.sleep(THROTTLE_TIME)
+                # On timeout, throttle
+                except requests.exceptions.Timeout:
+                    self.throttle()
 
-        except Exception as e:
-            self.status = self.ERROR
+                # On unknown exception, assume the connection was reset by the peer
+                except Exception as e:
+                    if(len(chunk) > 0):
+                        tmp_file.write(chunk)
+                    self.throttle()
+                    res.close()
+                    res = self.establish_stream(start=os.path.getsize(tmp_name))
+                    if(res is None or self.status == self.ERROR):
+                        self.status = self.ERROR
+                        break
+
+
+                # Download successful
+                else:
+                    # Ensure hash has not been seen before
+                    if(not did_hash):
+                        self.status = self.HASHING
+                        hash = self.algo(chunk[:1024*64]).hexdigest()
+                        if(hash in self.hashes):
+                            is_duplicate = True
+                            break
+                        with open(out_name, 'wb') as out_file: pass
+                        self.hashes[hash] = self.name
+                        did_hash = True
+
+                    tmp_file.write(chunk)
+                    if(len(chunk) < chunk_size):
+                        break
+
+        # On unrecoverable error, remove temp file
+        if(self.status == self.ERROR):
+            os.remove(tmp_name)
+            if(did_hash): os.remove(out_name)
             return
 
-        if(media is None):
-            self.status = self.ERROR
-            return
-
-        self.status = self.HASHING
-        hash = self.algo(media).hexdigest()
-        if(hash in self.hashes):
-            self.status = self.FINISHED
-            return
-
+        # Handle file renaming with consideration to duplicate files
         self.status = self.WRITING
-        self.hashes[hash] = name
-        with open(os.path.join(self.dst, self.name), 'wb') as file_out:
-            file_out.write(media)
+        if(is_duplicate):
+            os.remove(tmp_name)
+        else:
+            os.remove(out_name)
+            os.rename(tmp_name, out_name)
         self.status = self.FINISHED
 
 
@@ -93,12 +153,27 @@ def to_camel(sentence):
 
 
 """
+Delete empty and .part files from a directory.
+@param path - Path to the directory to delete files from
+@return None.
+"""
+def delete_download_artifacts(path):
+    if(not os.path.isdir(path)): return
+    for f in os.listdir(path):
+        f_path = os.path.join(path, f)
+        if(os.path.isfile(f_path) and (f_path.endswith('.part') or os.stat(f_path).st_size == 0)):
+            os.remove(f_path)
+    return
+
+
+
+"""
 Download media from posts on coomer.su
 @param urls - Dictionary of named urls for the media of the creator.
 @param include_imgs - Boolean for if to include images.
 @param include_vids - Boolean for if to include videos.
 @param dst - Destination directory for the downloads.
-@return the total number of media entries downloaded including previous sessions.
+@return the total number of media entries downloaded this session.
 """
 def download_media(urls, include_imgs, include_vids, dst):
     stdout.write('[download_media] INFO: Computing hashes of existing files.\n')
@@ -108,31 +183,35 @@ def download_media(urls, include_imgs, include_vids, dst):
 
     if(include_imgs):
         if(os.path.isdir(pics_dst)):
-            hashes = compute_file_hashes(pics_dst, IMG_EXTS, md5, hashes)
+            delete_download_artifacts(pics_dst)
+            hashes = compute_file_hashes(pics_dst, IMG_EXTS, md5, hashes, short=True)
         else:
             os.mkdir(pics_dst)
 
     if(include_vids):
         if(os.path.isdir(vids_dst)):
-            hashes = compute_file_hashes(vids_dst, VID_EXTS, md5, hashes)
+            delete_download_artifacts(vids_dst)
+            hashes = compute_file_hashes(vids_dst, VID_EXTS, md5, hashes, short=True)
         else:
             os.mkdir(vids_dst)
 
     stdout.write('\n')
 
+    len_before = len(hashes)
     hashes = multithread_download_urls_special(CoomerThread, urls, pics_dst, vids_dst, algo=md5, hashes=hashes)
-    return len(hashes)
+    return len(hashes) - len_before
 
 
 """
 Fetch a chunk of posts.
+@param base - Base URL to build off of.
 @param service - Service that the creator is hosted on.
 @param creator - Name of the creator.
 @param offset - Offset to begin from, must be divisible by 50 or None.
-@return a list of posts
+@return a list of posts.
 """
-def fetch_posts(service, creator, offset=None):
-    api_url = f'https://coomer.su/api/v1/{service}/user/{creator}'
+def fetch_posts(base, service, creator, offset=None):
+    api_url = f'{base}/api/v1/{service}/user/{creator}'
     if(offset is not None):
         api_url = f'{api_url}?o={offset}'
 
@@ -152,17 +231,178 @@ def fetch_posts(service, creator, offset=None):
 
 
 """
-Driver function to scrape coomer.su creators.
-@param url - URL of the creator, not a specific post.
+Get a dictionary of named media in a list of posts.
+@param base_url - Base URL.
+@param posts - List of URLs to posts
+@param imgs - Boolean for if to include images in downloading.
+@param vids - Boolean for if to include videos in downloading.
+"""
+def parse_posts(base_url, posts, imgs, vids):
+    named_urls = {}
+    for post in posts:
+        title = to_camel(re.sub(r'[^A-Za-z0-9\s]+', '', post['title']))
+        date = re.sub('-', '', post['published'].split('T')[0])
+        if('path' in post['file']):
+            ext = post['file']['path'].split('.')[-1]
+            if(not vids and ext in VID_EXTS): continue
+            if(not imgs and ext in IMG_EXTS): continue
+            name = date + '-' + title + '_0.' + ext
+            named_urls[name] = f'{base_url}{post["file"]["path"]}'
+
+        for i in range(0, len(post['attachments'])):
+            attachment = post['attachments'][i]
+            ext = attachment['path'].split('.')[-1]
+            if(not vids and ext in VID_EXTS): continue
+            if(not imgs and ext in IMG_EXTS): continue
+            name = date + '-' + title + '_' + str(i+1) + '.' + ext
+            named_urls[name] = f'{base_url}{attachment["path"]}'
+    return named_urls
+
+
+"""
+Download one media.
+@param url - Mostly sanitized URL of a creator's page
 @param dst - Destination directory to store the downloads.
 @param imgs - Boolean for if to include images in downloading.
 @param vids - Boolean for if to include videos in downloading.
 """
-def main(url, dst, imgs, vids):
+def process_media(url, dst, imgs, vids):
+    # Further sanitize the URL
+    url = re.sub('n[0-9].', '', url)
+
+    # Use the name from the URL
+    name = url.split('?f=')[-1]
+
+    # Make the named dictionary
+    named_url = {}
+    named_url[name] = url
+
+    # Download the single media
+    return download_media(named_url, imgs, vids, dst)
+
+
+"""
+Download all media from a creator's post.
+@param url - Sanitized URL of a post.
+@param dst - Destination directory to store the downloads.
+@param imgs - Boolean for if to include images in downloading.
+@param vids - Boolean for if to include videos in downloading.
+"""
+def process_post(url, dst, imgs, vids):
+    # Determine the base from the specified URL
+    base_url = url[:21]
+
+    # Get the JSON of the post
+    stdout.write(f'\n[process_post] INFO: Converting post to JSON.\n')
+    api_url = url.replace(base_url, f'{base_url}/api/v1')
+    try:
+        res = requests.get(api_url, headers={'accept': 'application/json'})
+    except:
+        stdout.write(f'[process_post] ERROR: Failed to fetch using API ({api_url})\n')
+        stdout.write(f'[process_post] ERROR: Status code: {res.status_code}\n')
+        return
+    post = [res.json()]
+
+    # Get the named media URLs
+    stdout.write(f'\n[process_post] INFO: Parsing media from 1 post.\n')
+    named_urls = parse_posts(base_url, post, imgs, vids)
+    stdout.write(f'[process_post] INFO: Found {len(named_urls)} media files to download.\n\n')
+
+    # Download all media from the posts
+    return download_media(named_urls, imgs, vids, dst)
+
+
+"""
+Download all media from a creator's page.
+@param url - Sanitized URL of a creator's page
+@param dst - Destination directory to store the downloads.
+@param imgs - Boolean for if to include images in downloading.
+@param vids - Boolean for if to include videos in downloading.
+@param start_offs - Index to begin downloading from.
+@param end_offs - Index to finish downloading from.
+"""
+def process_page(url, dst, imgs, vids, start_offs, end_offs):
+    # Determine the base from the specified URL
+    url_sections = url.split('/')
+    base_url = url[:21]
+
+    # Round the offsets to be friendly with the API
+    rounded_start = 0
+    if(start_offs is not None and start_offs % POSTS_PER_FETCH != 0):
+        rounded_start = start_offs - (start_offs % POSTS_PER_FETCH)
+    rounded_end = maxsize
+    if(end_offs is not None):
+        rounded_end = end_offs - (end_offs % POSTS_PER_FETCH) + POSTS_PER_FETCH
+        if(end_offs % POSTS_PER_FETCH == 0):
+            rounded_end -= POSTS_PER_FETCH
+
+    # Inform user of offset effects
+    if(rounded_start != 0 or rounded_end != maxsize):
+        rounded_start_str = '' if start_offs is None else str(rounded_start)
+        rounded_end_str = '' if end_offs is None else str(rounded_end)
+        stdout.write(f'[process_page] INFO: Fetching posts in clamped range [{rounded_start_str}, {rounded_end_str}].\n')
+        start_str = '' if start_offs is None else str(start_offs)
+        end_str = '' if end_offs is None else str(end_offs)
+        stdout.write(f'[process_page] INFO: This will be pruned to [{start_str}, {end_str}] before downloading.\n')
+
+    # Iterate the pages to get all posts
+    all_posts = []
+    offset = rounded_start
+    stdout.write(f'[process_page] INFO: Fetching posts {offset + 1} - ')
+    while(True):
+        stdout.write(f'{offset + POSTS_PER_FETCH}...')
+        stdout.flush()
+        curr_posts = fetch_posts(base_url, url_sections[-3], url_sections[-1], offset=offset)
+        all_posts = all_posts + curr_posts
+        offset += POSTS_PER_FETCH
+        stdout.write(f'\033[{len(str(offset)) + 3}D')
+        if(len(curr_posts) % POSTS_PER_FETCH != 0 or len(curr_posts) == 0 or offset >= rounded_end):
+            break
+
+    # Prune the download list to within the range of offsets if specified
+    if(rounded_start != 0):
+        skip_start = start_offs - rounded_start - 1
+        all_posts = all_posts[skip_start:]
+
+    if(rounded_end != maxsize):
+        skip_end = rounded_end - end_offs
+        all_posts = all_posts[:-skip_end]
+
+    # Parse the response to get links for all media, excluding media if necessary
+    stdout.write(f'\n[process_page] INFO: Parsing media from the {len(all_posts)} posts.\n')
+    named_urls = parse_posts(base_url, all_posts, imgs, vids)
+    stdout.write(f'[process_page] INFO: Found {len(named_urls)} media files to download.\n\n')
+
+    # Download all media from the posts
+    return download_media(named_urls, imgs, vids, dst)
+
+
+"""
+Driver function to scrape media from coomer or kemono.
+@param url - URL of the requested download.
+@param dst - Destination directory to store the downloads.
+@param imgs - Boolean for if to include images in downloading.
+@param vids - Boolean for if to include videos in downloading.
+@param start_offs - Index to begin downloading from.
+@param end_offs - Index to finish downloading from.
+"""
+def main(url, dst, imgs, vids, start_offs, end_offs):
     # Sanity check imgs and vids
     if(not imgs and not vids):
         stdout.write('[main] WARNING: Nothing to download when skipping images and videos.\n')
         return
+
+    # Sanity check the start and end
+    if(start_offs is not None and start_offs <= 0):
+        stdout.write('[main] ERROR: Starting offset must be > 0.')
+        return
+    if(end_offs is not None):
+        if(end_offs <= 0):
+            stdout.write('[main] ERROR: Ending offset must be > 0.')
+            return
+        if(start_offs is not None and start_offs > end_offs):
+            stdout.write('[main] ERROR: Ending offset must be >= starting offset.')
+            return
 
     # Sanitize the URL
     url = 'https://www.' + re.sub('(www\.)|(https?://)', '', url)
@@ -171,87 +411,91 @@ def main(url, dst, imgs, vids):
     if(len(url_sections) < 4):
         stderr.write('[main] ERROR: The URL is malformed.\n')
         return
+
+    # Perform downloading of a post
     if(url_sections[-2] == 'post'):
-        stderr.write('[main] ERROR: The URL must be for a creator, not a specific post.\n')
-        return
+        if(start_offs != None or end_offs != None):
+            stdout.write('[main] WARNING: Start and end offsets are ignored when downloading a post.\n')
+        cnt = process_post(url, dst, imgs, vids)
+
+    # Perform downloading of a media
     elif(url_sections[-4] == 'data'):
-        stderr.write('[main] ERROR: The URL must be for a creator, not a specific media.\n')
-        return
+        if(start_offs != None or end_offs != None):
+            stdout.write('[main] WARNING: Start and end offsets are ignored when downloading a media.\n')
+        cnt = process_media(url, dst, imgs, vids)
 
-    # Iterate the pages to get all posts
-    all_posts = []
-    offset = 0
-    stdout.write(f'[main] INFO: Fetching posts {offset + 1} - ')
-    while(True):
-        stdout.write(f'{offset + POSTS_PER_FETCH}...')
-        stdout.flush()
-        curr_posts = fetch_posts(url_sections[-3], url_sections[-1], offset=offset)
-        all_posts = all_posts + curr_posts
-        offset += POSTS_PER_FETCH
-        stdout.write(f'\033[{len(str(offset)) + 3}D')
-        if(len(curr_posts) % POSTS_PER_FETCH != 0):
-            break
-        elif(len(curr_posts) == 0):
-            stdout.write(f'{offset - POSTS_PER_FETCH}...')
-            break
+    # Perform downloading of a page
+    else:
+        cnt = process_page(url, dst, imgs, vids, start_offs, end_offs)
 
-    # Parse the response to get links for all media, excluding media if necessary
-    stdout.write(f'\n[main] INFO: Parsing media from the {len(all_posts)} posts.\n')
-    named_urls = {}
-    base = 'http://www.coomer.su'
-    for post in all_posts:
-        title = to_camel(re.sub(r'[^A-Za-z0-9\s]+', '', post['title']))
-        date = re.sub('-', '', post['published'].split('T')[0])
-        if('path' in post['file']):
-            ext = post['file']['path'].split('.')[-1]
-            if(not vids and ext in VID_EXTS): continue
-            if(not imgs and ext in IMG_EXTS): continue
-            name = date + '-' + title + '_0.' + ext
-            named_urls[name] = f'{base}{post["file"]["path"]}'
-
-        for i in range(0, len(post['attachments'])):
-            attachment = post['attachments'][i]
-            ext = attachment['path'].split('.')[-1]
-            if(not vids and ext in VID_EXTS): continue
-            if(not imgs and ext in IMG_EXTS): continue
-            name = date + '-' + title + '_' + str(i+1) + '.' + ext
-            named_urls[name] = f'{base}{attachment["path"]}'
-
-    stdout.write(f'[main] INFO: Found {len(named_urls)} media files to download.\n\n')
-
-    # Download all media from the posts
-    cnt = download_media(named_urls, imgs, vids, dst)
-    stdout.write(f'\n[main] INFO: Successfully downloaded ({cnt}) unique media.\n\n')
+    stdout.write(f'\n[main] INFO: Successfully downloaded ({cnt}) additional media.\n\n')
 
 
 """
-Entry point
+Entry point to handle argument parsing
 """
 if(__name__ == '__main__'):
     stdout.write('\n')
-    if(len(argv) != 5):
+
+    parser = argparse.ArgumentParser(description='Coomer and Kemono scraper')
+    parser.exit_on_error = False
+    parser.add_argument('url', type=str, help='coomer or kemono URL to scrape media from')
+    parser.add_argument('--out', '-o', type=str, default='./out', help='download destination (default: ./out)')
+    parser.add_argument('--skip-vids', action='store_true', help='skip video downloads')
+    parser.add_argument('--skip-imgs', action='store_true', help='skip image downloads')
+    parser.add_argument('--confirm', '-c', action='store_true', help='confirm arguments before proceeding')
+    parser.add_argument('--start-offset', type=int, default=None, help='starting offset to begin downloading')
+    parser.add_argument('--end-offset', type=int, default=None, help='ending offset to finish downloading')
+
+    try:
+        args = parser.parse_args()
+        url = args.url
+        dst = args.out
+        img = args.skip_imgs
+        vid = args.skip_vids
+        confirm = args.confirm
+        start_offset = args.start_offset
+        end_offset = args.end_offset
+
+    except:
+        if('--help' in argv or '-h' in argv):
+            stdout.write('\n')
+            exit()
+
+        stdout.write('Falling back to reading user input\n\n')
         url = input('Enter Coomer URL: ')
         dst = input('Enter download dir (./out/): ')
-        img = input('Include images (Y/n): ')
-        vid = input('Include videos (Y/n): ')
+        img = input('Skip images (y/N): ')
+        vid = input('Skip videos (y/N): ')
+        start_offset = input('Starting offset (optional): ')
+        end_offset = input('Ending offset (optional): ')
+        img = len(img) > 0 and img.lower()[0] == 'y'
+        vid = len(vid) > 0 and vid.lower()[0] == 'y'
+        if(len(dst) == 0): dst = './out'
+        try:
+            start_offset = None if len(start_offset) == 0 else int(start_offset)
+            end_offset = None if len(end_offset) == 0 else int(end_offset)
+        except:
+            stdout.write("Invalid start or end offset. Exiting\n\n")
+            exit()
+        confirm = True
         stdout.write('\n')
-    else:
-        url = argv[1]
-        dst = argv[2]
-        img = argv[3]
-        vid = argv[4]
 
-    if(len(img) == 0): img = 'y'
-    else: img = img.lower()[0]
+    if(confirm):
+        stdout.write('---\n')
+        stdout.write(f'Scraping media from {url}\n')
+        stdout.write(f'Media will be downloaded to {dst}\n')
+        stdout.write(f'Videos will be {vid and "skipped" or "downloaded"}\n')
+        stdout.write(f'Images will be {img and "skipped" or "downloaded"}\n')
+        stdout.write(f'Starting offset is {start_offset}\n')
+        stdout.write(f'Ending offset is {end_offset}\n')
+        stdout.write('---\n')
+        confirmed = input('Continue to download (Y/n): ')
+        if(len(confirmed) > 0 and confirmed.lower()[0] != 'y'): exit()
 
-    if(len(vid) == 0): vid = 'y'
-    else: vid = vid.lower()[0]
-
-    if(len(dst) == 0):
-        dst = './out'
     if(not os.path.isdir(dst)):
         os.makedirs(dst)
 
-    main(url, dst, (img == 't' or img == 'y'), (vid == 't' or vid == 'y'))
+    main(url, dst, not img, not vid, start_offset, end_offset)
     input('---Press enter to exit---')
     stdout.write('\n')
