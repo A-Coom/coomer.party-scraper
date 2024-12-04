@@ -35,7 +35,7 @@ In its current state, this scraper requires the requests package. You can instal
 ### Execution Command
 ```
 usage: scrape.py [-h] [--out OUT] [--skip-vids] [--skip-imgs] [--confirm]
-                 [--start-offset START_OFFSET] [--end-offset END_OFFSET]
+                 [--full-hash] [--offset-start START] [--offset-end END]
                  url
 
 Coomer and Kemono scraper
@@ -49,19 +49,20 @@ optional arguments:
   --skip-vids           skip video downloads
   --skip-imgs           skip image downloads
   --confirm, -c         confirm arguments before proceeding
-  --start-offset START  starting offset to begin downloading
-  --end-offset END      ending offset to finish downloading
-
+  --full-hash           calculate full hash of existing files. Ideal for a low
+                        bandwidth use case, but requires more processing
+  --offset-start START  starting offset to begin downloading
+  --offset-end END      ending offset to finish downloading
 ```
 
 The URL can be a page for an artist, a post from an artist, or a single media file. The starting and ending offsets are only respected when downloading from a page.
 
-If any of the parameters are omitted, then you will be prompted for all parameters during execution.
+If the URL is omitted, then you will be prompted for all parameters during execution.
 
 
 
 ## A Note on Scraping
-This version is confirmed to work as of November 22, 2024. This approach uses the API when possible, which increases the reliability that it will continue to work in the future. Nevertheless, if you encounter any problems, please open an issue.
+This version is confirmed to work as of December 3, 2024. This approach uses the API when possible, which increases the reliability that it will continue to work in the future. Nevertheless, if you encounter any problems, please open an issue.
 
 
 

@@ -1,6 +1,6 @@
 from scraping_utils.scraping_utils import compute_file_hashes, DownloadThread, multithread_download_urls_special, IMG_EXTS, VID_EXTS, TOO_MANY_REQUESTS, NOT_FOUND, CONNECTION_RESET, THROTTLE_TIME
 from sys import stderr, stdout, argv, maxsize
-from hashlib import md5
+from hashlib import md5, sha256
 import argparse
 import os
 import time
@@ -56,13 +56,13 @@ class CoomerThread(DownloadThread):
                 break
             except:
                 self.throttle()
+            else:
+                if(res.status_code == TOO_MANY_REQUESTS):
+                    self.throttle()
 
-            if(res.status_code == TOO_MANY_REQUESTS):
-                self.throttle()
-
-            elif(res.status_code == NOT_FOUND):
-                self.status = self.ERROR
-                break
+                elif(res.status_code == NOT_FOUND):
+                    self.status = self.ERROR
+                    break
 
         # Return the streamed connection
         return res
@@ -107,11 +107,10 @@ class CoomerThread(DownloadThread):
                         self.status = self.ERROR
                         break
 
-
-                # Download successful
+                # Chunk download successful
                 else:
-                    # Ensure hash has not been seen before
-                    if(not did_hash):
+                    # Ensure hash has not been seen before if using short hash
+                    if(self.algo == md5 and not did_hash):
                         self.status = self.HASHING
                         hash = self.algo(chunk[:1024*64]).hexdigest()
                         if(hash in self.hashes):
@@ -136,7 +135,8 @@ class CoomerThread(DownloadThread):
         if(is_duplicate):
             os.remove(tmp_name)
         else:
-            os.remove(out_name)
+            try: os.remove(out_name)
+            except: pass
             os.rename(tmp_name, out_name)
         self.status = self.FINISHED
 
@@ -166,39 +166,53 @@ def delete_download_artifacts(path):
     return
 
 
-
 """
 Download media from posts on coomer.su
 @param urls - Dictionary of named urls for the media of the creator.
 @param include_imgs - Boolean for if to include images.
 @param include_vids - Boolean for if to include videos.
 @param dst - Destination directory for the downloads.
+@param full_hash - Calculate a full hash for quick comparisons.
 @return the total number of media entries downloaded this session.
 """
-def download_media(urls, include_imgs, include_vids, dst):
+def download_media(urls, include_imgs, include_vids, dst, full_hash):
+    # Craft the download paths
     stdout.write('[download_media] INFO: Computing hashes of existing files.\n')
     hashes = {}
     pics_dst = os.path.join(dst, 'Pics');
     vids_dst = os.path.join(dst, 'Vids');
 
+    # Determine the hashing algorithm
+    algo = md5
+    if(full_hash): algo = sha256
+
+    # Create the image path or compute the hashes of its files
     if(include_imgs):
         if(os.path.isdir(pics_dst)):
             delete_download_artifacts(pics_dst)
-            hashes = compute_file_hashes(pics_dst, IMG_EXTS, md5, hashes, short=True)
+            hashes = compute_file_hashes(pics_dst, IMG_EXTS, algo, hashes, short=(not full_hash))
         else:
             os.mkdir(pics_dst)
 
+    # Create the video path or compute the hashes of its files
     if(include_vids):
         if(os.path.isdir(vids_dst)):
             delete_download_artifacts(vids_dst)
-            hashes = compute_file_hashes(vids_dst, VID_EXTS, md5, hashes, short=True)
+            hashes = compute_file_hashes(vids_dst, VID_EXTS, algo, hashes, short=(not full_hash))
         else:
             os.mkdir(vids_dst)
 
+    # If using a full hash, prune download list based on the URL
+    if(full_hash):
+        stdout.write('[download_media] INFO: Pruning download list.\n')
+        skipping = [name for name, url in urls.items() if any(hash in url for hash in hashes)]
+        for skip in skipping:
+            del urls[skip]
+        stdout.write(f'[download_media] INFO: Removed {len(skipping)} downloads from the queue.\n')
     stdout.write('\n')
 
     len_before = len(hashes)
-    hashes = multithread_download_urls_special(CoomerThread, urls, pics_dst, vids_dst, algo=md5, hashes=hashes)
+    hashes = multithread_download_urls_special(CoomerThread, urls, pics_dst, vids_dst, algo=algo, hashes=hashes)
     return len(hashes) - len_before
 
 
@@ -208,7 +222,7 @@ Fetch a chunk of posts.
 @param service - Service that the creator is hosted on.
 @param creator - Name of the creator.
 @param offset - Offset to begin from, must be divisible by 50 or None.
-@return a list of posts.
+@return a list of posts or None.
 """
 def fetch_posts(base, service, creator, offset=None):
     api_url = f'{base}/api/v1/{service}/user/{creator}'
@@ -216,8 +230,11 @@ def fetch_posts(base, service, creator, offset=None):
         api_url = f'{api_url}?o={offset}'
 
     while(True):
-        try: res = requests.get(api_url, headers={'accept': 'application/json'})
-        except: pass
+        try:
+            res = requests.get(api_url, headers={'accept': 'application/json'})
+        except:
+            stdout.write(f'\n\n[fetch_posts] ERROR: Trouble connecting to {base}. Try again later.\n')
+            return None
 
         if(res.status_code == 429): time.sleep(THROTTLE_TIME)
         else: break
@@ -265,8 +282,9 @@ Download one media.
 @param dst - Destination directory to store the downloads.
 @param imgs - Boolean for if to include images in downloading.
 @param vids - Boolean for if to include videos in downloading.
+@param full_hash - Calculate a full hash for quick comparisons.
 """
-def process_media(url, dst, imgs, vids):
+def process_media(url, dst, imgs, vids, full_hash):
     # Further sanitize the URL
     url = re.sub('n[0-9].', '', url)
 
@@ -278,7 +296,7 @@ def process_media(url, dst, imgs, vids):
     named_url[name] = url
 
     # Download the single media
-    return download_media(named_url, imgs, vids, dst)
+    return download_media(named_url, imgs, vids, dst, full_hash)
 
 
 """
@@ -287,8 +305,9 @@ Download all media from a creator's post.
 @param dst - Destination directory to store the downloads.
 @param imgs - Boolean for if to include images in downloading.
 @param vids - Boolean for if to include videos in downloading.
+@param full_hash - Calculate a full hash for quick comparisons.
 """
-def process_post(url, dst, imgs, vids):
+def process_post(url, dst, imgs, vids, full_hash):
     # Determine the base from the specified URL
     base_url = url[:21]
 
@@ -299,7 +318,6 @@ def process_post(url, dst, imgs, vids):
         res = requests.get(api_url, headers={'accept': 'application/json'})
     except:
         stdout.write(f'[process_post] ERROR: Failed to fetch using API ({api_url})\n')
-        stdout.write(f'[process_post] ERROR: Status code: {res.status_code}\n')
         return
     post = [res.json()]
 
@@ -309,7 +327,7 @@ def process_post(url, dst, imgs, vids):
     stdout.write(f'[process_post] INFO: Found {len(named_urls)} media files to download.\n\n')
 
     # Download all media from the posts
-    return download_media(named_urls, imgs, vids, dst)
+    return download_media(named_urls, imgs, vids, dst, full_hash)
 
 
 """
@@ -320,8 +338,9 @@ Download all media from a creator's page.
 @param vids - Boolean for if to include videos in downloading.
 @param start_offs - Index to begin downloading from.
 @param end_offs - Index to finish downloading from.
+@param full_hash - Calculate a full hash for quick comparisons.
 """
-def process_page(url, dst, imgs, vids, start_offs, end_offs):
+def process_page(url, dst, imgs, vids, start_offs, end_offs, full_hash):
     # Determine the base from the specified URL
     url_sections = url.split('/')
     base_url = url[:21]
@@ -353,6 +372,7 @@ def process_page(url, dst, imgs, vids, start_offs, end_offs):
         stdout.write(f'{offset + POSTS_PER_FETCH}...')
         stdout.flush()
         curr_posts = fetch_posts(base_url, url_sections[-3], url_sections[-1], offset=offset)
+        if(curr_posts == None): return 0
         all_posts = all_posts + curr_posts
         offset += POSTS_PER_FETCH
         stdout.write(f'\033[{len(str(offset)) + 3}D')
@@ -363,7 +383,6 @@ def process_page(url, dst, imgs, vids, start_offs, end_offs):
     if(rounded_start != 0):
         skip_start = start_offs - rounded_start - 1
         all_posts = all_posts[skip_start:]
-
     if(rounded_end != maxsize):
         skip_end = rounded_end - end_offs
         all_posts = all_posts[:-skip_end]
@@ -374,7 +393,7 @@ def process_page(url, dst, imgs, vids, start_offs, end_offs):
     stdout.write(f'[process_page] INFO: Found {len(named_urls)} media files to download.\n\n')
 
     # Download all media from the posts
-    return download_media(named_urls, imgs, vids, dst)
+    return download_media(named_urls, imgs, vids, dst, full_hash)
 
 
 """
@@ -385,8 +404,9 @@ Driver function to scrape media from coomer or kemono.
 @param vids - Boolean for if to include videos in downloading.
 @param start_offs - Index to begin downloading from.
 @param end_offs - Index to finish downloading from.
+@param full_hash - Calculate a full hash for quick comparisons.
 """
-def main(url, dst, imgs, vids, start_offs, end_offs):
+def main(url, dst, imgs, vids, start_offs, end_offs, full_hash):
     # Sanity check imgs and vids
     if(not imgs and not vids):
         stdout.write('[main] WARNING: Nothing to download when skipping images and videos.\n')
@@ -426,7 +446,7 @@ def main(url, dst, imgs, vids, start_offs, end_offs):
 
     # Perform downloading of a page
     else:
-        cnt = process_page(url, dst, imgs, vids, start_offs, end_offs)
+        cnt = process_page(url, dst, imgs, vids, start_offs, end_offs, full_hash)
 
     stdout.write(f'\n[main] INFO: Successfully downloaded ({cnt}) additional media.\n\n')
 
@@ -444,8 +464,9 @@ if(__name__ == '__main__'):
     parser.add_argument('--skip-vids', action='store_true', help='skip video downloads')
     parser.add_argument('--skip-imgs', action='store_true', help='skip image downloads')
     parser.add_argument('--confirm', '-c', action='store_true', help='confirm arguments before proceeding')
-    parser.add_argument('--start-offset', type=int, default=None, help='starting offset to begin downloading')
-    parser.add_argument('--end-offset', type=int, default=None, help='ending offset to finish downloading')
+    parser.add_argument('--full-hash', action='store_true', help='calculate full hash of existing files. Ideal for a low bandwidth use case, but requires more processing')
+    parser.add_argument('--offset-start', type=int, default=None, dest='start', help='starting offset to begin downloading')
+    parser.add_argument('--offset-end', type=int, default=None, dest='end', help='ending offset to finish downloading')
 
     try:
         args = parser.parse_args()
@@ -454,8 +475,9 @@ if(__name__ == '__main__'):
         img = args.skip_imgs
         vid = args.skip_vids
         confirm = args.confirm
-        start_offset = args.start_offset
-        end_offset = args.end_offset
+        full_hash = args.full_hash
+        start_offset = args.start
+        end_offset = args.end
 
     except:
         if('--help' in argv or '-h' in argv):
@@ -467,10 +489,12 @@ if(__name__ == '__main__'):
         dst = input('Enter download dir (./out/): ')
         img = input('Skip images (y/N): ')
         vid = input('Skip videos (y/N): ')
+        full_hash = input('Use full hash (y/N): ')
         start_offset = input('Starting offset (optional): ')
         end_offset = input('Ending offset (optional): ')
         img = len(img) > 0 and img.lower()[0] == 'y'
         vid = len(vid) > 0 and vid.lower()[0] == 'y'
+        full_hash = len(full_hash) > 0 and full_hash.lower()[0] == 'y'
         if(len(dst) == 0): dst = './out'
         try:
             start_offset = None if len(start_offset) == 0 else int(start_offset)
@@ -487,6 +511,7 @@ if(__name__ == '__main__'):
         stdout.write(f'Media will be downloaded to {dst}\n')
         stdout.write(f'Videos will be {vid and "skipped" or "downloaded"}\n')
         stdout.write(f'Images will be {img and "skipped" or "downloaded"}\n')
+        stdout.write(f'Full hashes will{full_hash and " " or " not "}be used\n')
         stdout.write(f'Starting offset is {start_offset}\n')
         stdout.write(f'Ending offset is {end_offset}\n')
         stdout.write('---\n')
@@ -496,6 +521,6 @@ if(__name__ == '__main__'):
     if(not os.path.isdir(dst)):
         os.makedirs(dst)
 
-    main(url, dst, not img, not vid, start_offset, end_offset)
+    main(url, dst, not img, not vid, start_offset, end_offset, full_hash)
     input('---Press enter to exit---')
     stdout.write('\n')
