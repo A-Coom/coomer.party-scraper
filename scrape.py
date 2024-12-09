@@ -110,14 +110,17 @@ class CoomerThread(DownloadThread):
                 # Chunk download successful
                 else:
                     # Ensure hash has not been seen before if using short hash
-                    if(self.algo == md5 and not did_hash):
-                        self.status = self.HASHING
-                        hash = self.algo(chunk[:1024*64]).hexdigest()
-                        if(hash in self.hashes):
-                            is_duplicate = True
-                            break
-                        with open(out_name, 'wb') as out_file: pass
-                        self.hashes[hash] = self.name
+                    if(not did_hash):
+                        if(self.algo == md5):
+                            self.status = self.HASHING
+                            hash = self.algo(chunk[:1024*64]).hexdigest()
+                            if(hash in self.hashes):
+                                is_duplicate = True
+                                break
+                            with open(out_name, 'wb') as out_file: pass
+                            self.hashes[hash] = self.name
+                        else:
+                            self.hashes[len(self.hashes)] = self.name
                         did_hash = True
 
                     tmp_file.write(chunk)
