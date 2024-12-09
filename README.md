@@ -33,6 +33,7 @@ In its current state, this scraper requires the requests package. You can instal
 
 
 ### Execution Command
+
 ```
 usage: scrape.py [-h] [--out OUT] [--skip-vids] [--skip-imgs] [--confirm]
                  [--full-hash] [--offset-start START] [--offset-end END]
@@ -62,9 +63,21 @@ If the URL is omitted, then you will be prompted for all parameters during execu
 
 
 ## A Note on Scraping
+
 This version is confirmed to work as of December 3, 2024. This approach uses the API when possible, which increases the reliability that it will continue to work in the future. Nevertheless, if you encounter any problems, please open an issue.
 
 
 
 ## Disclaimer
+
 The website that this scraper targets is known to host media that is taken from many pay-per-view services without the consent of the original owner. By accessing this website (through a web browser or this tool), you are willfully viewing this stolen media. The user of the scraper is fully responsible for any consequences that may occur from these actions, and the developer(s) of this scraper does not assume responsibility for how the user chooses to act.
+
+
+
+## Donate
+
+If you enjoy this project and want to support its continued development, you can buy me a coffee with Bitcoin :)
+```
+bc1q7fea7t5twypa4d2vg63qqw7a2tz9e3h2ke95wp
+```
+![bitcoin QR code](./img/bitcoin_qr_code.png)
