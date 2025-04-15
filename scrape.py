@@ -525,5 +525,6 @@ if(__name__ == '__main__'):
         os.makedirs(dst)
 
     main(url, dst, not img, not vid, start_offset, end_offset, full_hash)
-    input('---Press enter to exit---')
-    stdout.write('\n')
+    if(confirm):
+        input('---Press enter to exit---')
+        stdout.write('\n')
