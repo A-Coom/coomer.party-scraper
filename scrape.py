@@ -53,6 +53,7 @@ class CoomerThread(DownloadThread):
             try:
                 headers = start > 0 and { 'Range': f'bytes={start}-' } or {}
                 res = requests.get(self.url, headers=headers, stream=True, allow_redirects=True)
+                res.raise_for_status()
                 break
             except:
                 self.throttle()
