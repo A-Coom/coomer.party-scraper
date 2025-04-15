@@ -429,7 +429,7 @@ def main(url, dst, imgs, vids, start_offs, end_offs, full_hash):
             return
 
     # Sanitize the URL
-    url = 'https://www.' + re.sub('(www\.)|(https?://)', '', url)
+    url = 'https://www.' + re.sub(r'(www\.)|(https?://)', '', url)
     if(url[-1] == '/'): url = url[:-1]
     url_sections = url.split('/')
     if(len(url_sections) < 4):
