@@ -104,7 +104,7 @@ class CoomerThread(DownloadThread):
                 except Exception as e:
                     if(len(chunk) > 0):
                         tmp_file.write(chunk)
-                        self.downloaded = tmp_file.tell()
+                        self.downloaded = os.path.getsize(tmp_name)
                     self.throttle()
                     res.close()
                     res = self.establish_stream(start=os.path.getsize(tmp_name))
@@ -129,7 +129,7 @@ class CoomerThread(DownloadThread):
                         did_hash = True
 
                     tmp_file.write(chunk)
-                    self.downloaded = tmp_file.tell()
+                    self.downloaded = os.path.getsize(tmp_name)
                     if(len(chunk) < chunk_size):
                         break
 
