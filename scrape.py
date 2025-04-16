@@ -102,9 +102,6 @@ class CoomerThread(DownloadThread):
 
                 # On unknown exception, assume the connection was reset by the peer
                 except Exception as e:
-                    if(len(chunk) > 0):
-                        tmp_file.write(chunk)
-                        self.downloaded = os.path.getsize(tmp_name)
                     self.throttle()
                     res.close()
                     res = self.establish_stream(start=os.path.getsize(tmp_name))
