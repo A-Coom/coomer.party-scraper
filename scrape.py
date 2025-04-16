@@ -80,6 +80,9 @@ class CoomerThread(DownloadThread):
         if(res is None or self.status == self.ERROR):
             return
 
+        # Get total content size of file
+        self.total_size = int(res.headers.get("content-length", 0))
+
         # Track if hashing has occurred
         did_hash = False
         is_duplicate = False
@@ -91,6 +94,7 @@ class CoomerThread(DownloadThread):
             while(True):
                 # Try to download the next chunk
                 self.status = self.DOWNLOADING
+                self.downloaded = tmp_file.tell()
                 try: chunk = res.raw.read(chunk_size)
 
                 # On timeout, throttle
