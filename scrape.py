@@ -94,7 +94,6 @@ class CoomerThread(DownloadThread):
             while(True):
                 # Try to download the next chunk
                 self.status = self.DOWNLOADING
-                self.downloaded = tmp_file.tell()
                 try: chunk = res.raw.read(chunk_size)
 
                 # On timeout, throttle
@@ -105,6 +104,7 @@ class CoomerThread(DownloadThread):
                 except Exception as e:
                     if(len(chunk) > 0):
                         tmp_file.write(chunk)
+                        self.downloaded = tmp_file.tell()
                     self.throttle()
                     res.close()
                     res = self.establish_stream(start=os.path.getsize(tmp_name))
@@ -129,6 +129,7 @@ class CoomerThread(DownloadThread):
                         did_hash = True
 
                     tmp_file.write(chunk)
+                    self.downloaded = tmp_file.tell()
                     if(len(chunk) < chunk_size):
                         break
 
