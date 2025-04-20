@@ -48,26 +48,17 @@ class CoomerThread(DownloadThread):
 
     # Safely make a streamed connection
     def establish_stream(self, start=-1):
-        res = None
         while(True):
             try:
-                headers = start > 0 and { 'Range': f'bytes={start}-' } or {}
-                res = requests.get(self.url, headers=headers, stream=True, allow_redirects=True)
-                res.raise_for_status()
-                break
+                headers = { 'Range': f'bytes={start}-' } if start > 0 else {}
+                r = requests.get(self.url, headers=headers, stream=True, allow_redirects=True)
+                r.raise_for_status()
+                
+                # Return the streamed connection
+                return r
             except:
                 self.throttle()
-            else:
-                if(res.status_code == TOO_MANY_REQUESTS):
-                    self.throttle()
-
-                elif(res.status_code == NOT_FOUND):
-                    self.status = self.ERROR
-                    break
-
-        # Return the streamed connection
-        return res
-
+    
     # Perform downloading until successful, switching coom servers as "too many requests" responses are received
     def run(self):
         # Craft the file name and its temporary name
@@ -76,12 +67,11 @@ class CoomerThread(DownloadThread):
 
         # Establish the streamed connection
         self.status = self.CONNECTING
-        res = self.establish_stream()
-        if(res is None or self.status == self.ERROR):
-            return
+        r = self.establish_stream()
 
         # Get total content size of file
-        self.total_size = int(res.headers.get("content-length", 0))
+        self.total_size = int(r.headers.get("content-length", 1))
+        self.downloaded = 0
 
         # Track if hashing has occurred
         did_hash = False
@@ -92,48 +82,43 @@ class CoomerThread(DownloadThread):
         with open(tmp_name, 'wb') as tmp_file:
             # Download in chunks
             while(True):
-                # Try to download the next chunk
-                self.status = self.DOWNLOADING
-                try: chunk = res.raw.read(chunk_size)
+                try:
+                    # Try to download the chunks
+                    self.status = self.DOWNLOADING
 
-                # On timeout, throttle
-                except requests.exceptions.Timeout:
-                    self.throttle()
+                    # Process every chunk
+                    for chunk in r.iter_content(chunk_size):    
+                        # Ensure hash has not been seen before if using short hash
+                        if(not did_hash):
+                            if(self.algo == md5):
+                                self.status = self.HASHING
+                                hash = self.algo(chunk[:1024*64]).hexdigest()
+                                if(hash in self.hashes):
+                                    is_duplicate = True
+                                    break
+                                self.hashes[hash] = self.name
+                            else:
+                                self.hashes[len(self.hashes)] = self.name
+                            did_hash = True
 
-                # On unknown exception, assume the connection was reset by the peer
+                        self.status = self.DOWNLOADING
+                        tmp_file.write(chunk)
+                        self.downloaded += len(chunk)
+                
                 except Exception as e:
-                    self.throttle()
-                    res.close()
-                    res = self.establish_stream(start=os.path.getsize(tmp_name))
-                    if(res is None or self.status == self.ERROR):
+                    if(r.status_code == NOT_FOUND):
                         self.status = self.ERROR
                         break
+                    r.close()
+                    r = self.establish_stream(start=self.downloaded)
 
-                # Chunk download successful
+                # download is successful or duplicate hash was found
                 else:
-                    # Ensure hash has not been seen before if using short hash
-                    if(not did_hash):
-                        if(self.algo == md5):
-                            self.status = self.HASHING
-                            hash = self.algo(chunk[:1024*64]).hexdigest()
-                            if(hash in self.hashes):
-                                is_duplicate = True
-                                break
-                            with open(out_name, 'wb') as out_file: pass
-                            self.hashes[hash] = self.name
-                        else:
-                            self.hashes[len(self.hashes)] = self.name
-                        did_hash = True
-
-                    tmp_file.write(chunk)
-                    self.downloaded = os.path.getsize(tmp_name)
-                    if(len(chunk) < chunk_size):
-                        break
+                    break
 
         # On unrecoverable error, remove temp file
         if(self.status == self.ERROR):
             os.remove(tmp_name)
-            if(did_hash): os.remove(out_name)
             return
 
         # Handle file renaming with consideration to duplicate files
@@ -239,11 +224,10 @@ def fetch_posts(base, service, creator, offset=None):
         try:
             res = requests.get(api_url, headers={'accept': 'application/json'})
         except:
-            stdout.write(f'\n\n[fetch_posts] ERROR: Trouble connecting to {base}. Try again later.\n')
-            return None
-
-        if(res.status_code == 429): time.sleep(THROTTLE_TIME)
-        else: break
+            if(res.status_code == 429 or res.status_code == 403): time.sleep(THROTTLE_TIME)
+            else: break
+        else:
+            break
 
     if(res.status_code != 200):
         stdout.write(f'[fetch_posts] ERROR: Failed to fetch using API ({api_url})\n')
