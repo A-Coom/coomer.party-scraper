@@ -1,44 +1,36 @@
----
-name: Submodule Updates
+name: 'Submodule Update'
 
-#############################
-# Start the job on all push #
-#############################
 on:
-  push:
-    branches-ignore: [master, main]
-  pull_request:
-    branches: [master, main]
+  # Allows you to run this workflow manually from the Actions tab or through HTTP API
+  workflow_dispatch:
 
-###############
-# Set the Job #
-###############
 jobs:
-  build:
-    name: Submodule update
+  sync:
+    name: 'Submodule Update'
     runs-on: ubuntu-latest
-    env:
-      PARENT_REPOSITORY: 'org/example-repository'
-      CHECKOUT_BRANCH: 'main'
-      PR_AGAINST_BRANCH: 'main'
-      OWNER: 'org'
+
+    # Use the Bash shell regardless whether the GitHub Actions runner is ubuntu-latest, macos-latest, or windows-latest
+    defaults:
+      run:
+        shell: bash
 
     steps:
-      ##########################
-      # Checkout the code base #
-      ##########################
-      - name: Checkout Code
-        uses: actions/checkout@v2
+    # Checkout the repository to the GitHub Actions runner
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        submodules: true
 
-      ####################################
-      # Run the action against code base #
-      ####################################
-      - name: run action
-        id: run_action
-        uses: releasehub-com/github-action-create-pr-parent-submodule@v1
-        with:
-          github_token: ${{ secrets.RELEASE_HUB_SECRET }}
-          parent_repository: ${{ env.PARENT_REPOSITORY }}
-          checkout_branch: ${{ env.CHECKOUT_BRANCH}}
-          pr_against_branch: ${{ env.PR_AGAINST_BRANCH }}
-          owner: ${{ env.OWNER }}
+    # Update references
+    - name: Git Submodule Update
+      run: |
+        git pull --recurse-submodules
+        git submodule update --remote --recursive
+
+    - name: Commit update
+      run: |
+        git config --global user.name 'Git bot'
+        git config --global user.email 'bot@noreply.github.com'
+        git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+        git commit -am "Auto updated submodule references" && git push || echo "No changes to commit"
