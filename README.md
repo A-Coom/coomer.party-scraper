@@ -60,7 +60,7 @@ For a docker container the Github actions is used to automatically build a new d
 ```
 services:
   scraper:
-    image: ghcr.io/a-coom/coomer.party-scraper:main
+    image: ghcr.io/a-coom/coomer.party-scraper:latest
     volumes:
       - "/PATH/ON/YOUR/HOST:/out"
     command: --sub-folders --full-hash CREATORLINK CREATORLINK2
