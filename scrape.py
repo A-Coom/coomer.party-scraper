@@ -524,7 +524,7 @@ if(__name__ == '__main__'):
             exit()
 
         stdout.write('Falling back to reading user input\n\n')
-        url = input('Enter Coomer URL: ')
+        url = [ input('Enter Coomer URL: ') ]
         dst = input('Enter download dir (./out/): ')
         sub = input('Create sub directories for creators when downloading full pages or posts (y/N): ')
         img = input('Skip images (y/N): ')
