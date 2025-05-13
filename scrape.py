@@ -261,7 +261,7 @@ def get_creator_name(base, service, creator):
         stdout.write(f'[get_creator_name] ERROR: Status code: {res.status_code}\n')
         return f'{creator}_{service}'
 
-    return f'{res.json()['name']}_{service}'
+    return f'{res.json()["name"]}_{service}'
 
 
 """
