@@ -562,7 +562,7 @@ if(__name__ == '__main__'):
     parser.add_argument('--full-hash', action='store_true', help='calculate full hash of existing files. Ideal for a low bandwidth use case, but requires more processing')
     parser.add_argument('--offset-start', type=int, default=None, dest='start', help='starting offset to begin downloading')
     parser.add_argument('--offset-end', type=int, default=None, dest='end', help='ending offset to finish downloading')
-    parser.add_argument('--dump-urls', action='store_true', help='print the urls to stdout instead of downloading')
+    parser.add_argument('--dump-urls', action='store_true', help='print the urls to a text file instead of downloading')
 
     try:
         args = parser.parse_args()
