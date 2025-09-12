@@ -54,12 +54,12 @@ class CoomerThread(DownloadThread):
                 headers = { 'Range': f'bytes={start}-' } if start > 0 else {}
                 r = requests.get(self.url, headers=headers, stream=True, allow_redirects=True)
                 r.raise_for_status()
-                
+
                 # Return the streamed connection
                 return r
             except:
                 self.throttle()
-    
+
     # Perform downloading until successful, switching coom servers as "too many requests" responses are received
     def run(self):
         # Craft the file name and its temporary name
@@ -88,7 +88,7 @@ class CoomerThread(DownloadThread):
                     self.status = self.DOWNLOADING
 
                     # Process every chunk
-                    for chunk in r.iter_content(chunk_size):    
+                    for chunk in r.iter_content(chunk_size):
                         # Ensure hash has not been seen before if using short hash
                         if(not did_hash):
                             if(self.algo == md5):
@@ -105,7 +105,7 @@ class CoomerThread(DownloadThread):
                         self.status = self.DOWNLOADING
                         tmp_file.write(chunk)
                         self.downloaded += len(chunk)
-                
+
                 except Exception as e:
                     if(r.status_code == NOT_FOUND):
                         self.status = self.ERROR
@@ -317,12 +317,12 @@ def parse_posts(base_url, posts, imgs, vids):
     named_urls = {}
     for post in posts:
         title = to_camel(re.sub(r'[^A-Za-z0-9\s]+', '', post['title']))
-        date = re.sub('-', '', post['published'].split('T')[0])
+        datetime = re.sub('-|:', '', post['published'])
         if('path' in post['file']):
             ext = post['file']['path'].split('.')[-1]
             if(not vids and ext in VID_EXTS): continue
             if(not imgs and ext in IMG_EXTS): continue
-            name = date + '-' + title + '_0.' + ext
+            name = datetime + '-' + title + '_0.' + ext
             named_urls[name] = f'{base_url}{post["file"]["path"]}'
 
         for i in range(0, len(post['attachments'])):
@@ -330,7 +330,7 @@ def parse_posts(base_url, posts, imgs, vids):
             ext = attachment['path'].split('.')[-1]
             if(not vids and ext in VID_EXTS): continue
             if(not imgs and ext in IMG_EXTS): continue
-            name = date + '-' + title + '_' + str(i+1) + '.' + ext
+            name = datetime + '-' + title + '_' + str(i+1) + '.' + ext
             named_urls[name] = f'{base_url}{attachment["path"]}'
     return named_urls
 
@@ -459,7 +459,7 @@ def process_page(url, dst, sub, imgs, vids, start_offs, end_offs, full_hash):
         stdout.write(f'{offset + POSTS_PER_FETCH}...')
         stdout.flush()
         curr_posts = fetch_posts(base_url, service, creator, offset=offset)
-        if(curr_posts is None): 
+        if(curr_posts is None):
             return 0
         all_posts = all_posts + curr_posts
         offset += POSTS_PER_FETCH
