@@ -1,11 +1,43 @@
 from scraping_utils.scraping_utils import compute_file_hashes, DownloadThread, multithread_download_urls_special, IMG_EXTS, VID_EXTS, TOO_MANY_REQUESTS, NOT_FOUND, CONNECTION_RESET, THROTTLE_TIME
 from sys import stderr, stdout, argv, maxsize
 from hashlib import md5, sha256
+from urllib.parse import urlsplit
 import argparse
 import os
 import time
 import re
 import requests
+
+
+def su_base_from_url(url: str) -> str:
+    """
+    Normalize any coomer/kemono URL so the base is https://www.<sld>.su
+    Examples:
+      coomer.st -> https://www.coomer.su
+      https://kemono.party/... -> https://www.kemono.su
+    """
+    parts = urlsplit(url if re.match(r'^https?://', url) else f'https://{url}')
+    host = parts.netloc or ''
+    host = host[4:] if host.startswith('www.') else host
+    labels = host.split('.') if host else []
+    sld = labels[-2] if len(labels) >= 2 else (labels[0] if labels else 'coomer')
+    return f'https://www.{sld}.su'
+
+
+def extract_service_creator(url: str):
+    """
+    From a path like /onlyfans/user/<creator>[/post/<id>], get (service, creator).
+    """
+    parts = urlsplit(url)
+    segments = [p for p in parts.path.split('/') if p]
+    try:
+        i_user = segments.index('user')
+        service = segments[i_user - 1]
+        creator = segments[i_user + 1]
+        return service, creator
+    except Exception:
+        return None, None
+
 
 
 POSTS_PER_FETCH = 50
@@ -218,11 +250,11 @@ Fetch a chunk of posts.
 def fetch_posts(base, service, creator, offset=None):
     api_url = f'{base}/api/v1/{service}/user/{creator}'
     if(offset is not None):
-        api_url = f'{api_url}?o={offset}'
+        api_url = f'{api_url}/posts?o={offset}'
 
     while(True):
         try:
-            res = requests.get(api_url, headers={'accept': 'application/json'})
+            res = requests.get(api_url, headers={'accept': 'application/json', 'accept': 'text/css'})
         except:
             if(res.status_code == 429 or res.status_code == 403): time.sleep(THROTTLE_TIME)
             else: break
@@ -326,34 +358,42 @@ Download all media from a creator's post.
 @param full_hash - Calculate a full hash for quick comparisons.
 """
 def process_post(url, dst, sub, imgs, vids, full_hash):
-    # Determine the base from the specified URL
-    url_sections = url.split('/')
-    base_url = url[:21]
+    # Normalize base to *.su for API and asset paths
+    base_url = su_base_from_url(url)
 
+    # For nice folder names when --sub-folders is used
     if sub:
-        creator_name = get_creator_name(base_url, url_sections[-3], url_sections[-1])
-        dst = os.path.join(dst, creator_name)
-        stdout.write(f'[process_post] INFO: Start processing creator {creator_name}.\n')
-    else:        
-        stdout.write(f'[process_post] INFO: Start processing URL {url}.\n')
+        service, creator = extract_service_creator(url)
+        if service and creator:
+            creator_name = get_creator_name(base_url, service, creator)
+            dst = os.path.join(dst, creator_name)
+            stdout.write(f'[process_post] INFO: Start processing creator {creator_name}.\n')
+        else:
+            stdout.write(f'[process_post] WARNING: Could not parse service/creator from URL.\n')
 
-    # Get the JSON of the post
+    # Build the API URL using the normalized *.su base but keep the same path
     stdout.write(f'\n[process_post] INFO: Converting post to JSON.\n')
-    api_url = url.replace(base_url, f'{base_url}/api/v1')
+    path = urlsplit(url).path  # e.g. /onlyfans/user/<creator>/post/<id>
+    api_url = f'{base_url}/api/v1{path}'
     try:
         res = requests.get(api_url, headers={'accept': 'application/json'})
-    except:
+    except Exception:
         stdout.write(f'[process_post] ERROR: Failed to fetch using API ({api_url})\n')
         return
+
+    if res.status_code != 200:
+        stdout.write(f'[process_post] ERROR: API returned {res.status_code} ({api_url})\n')
+        return
+
     post = [res.json()]
 
-    # Get the named media URLs
+    # Use normalized base for file paths too (attachments are /data/...)
     stdout.write(f'\n[process_post] INFO: Parsing media from 1 post.\n')
     named_urls = parse_posts(base_url, post, imgs, vids)
     stdout.write(f'[process_post] INFO: Found {len(named_urls)} media files to download.\n\n')
 
-    # Download all media from the posts
     return download_media(named_urls, imgs, vids, dst, full_hash)
+
 
 
 """
@@ -368,18 +408,22 @@ Download all media from a creator's page.
 @param full_hash - Calculate a full hash for quick comparisons.
 """
 def process_page(url, dst, sub, imgs, vids, start_offs, end_offs, full_hash):
-    # Determine the base from the specified URL
-    url_sections = url.split('/')
-    base_url = url[:21]
+    # Normalize base to *.su for API and asset paths
+    base_url = su_base_from_url(url)
+
+    service, creator = extract_service_creator(url)
+    if not service or not creator:
+        stdout.write('[process_page] ERROR: Could not parse service/creator from URL.\n')
+        return 0
 
     if sub:
-        creator_name = get_creator_name(base_url, url_sections[-3], url_sections[-1])
+        creator_name = get_creator_name(base_url, service, creator)
         dst = os.path.join(dst, creator_name)
         stdout.write(f'[process_page] INFO: Start processing creator {creator_name}.\n')
-    else:        
+    else:
         stdout.write(f'[process_page] INFO: Start processing URL {url}.\n')
 
-    # Round the offsets to be friendly with the API
+    # Round the offsets (unchanged)
     rounded_start = 0
     if(start_offs is not None and start_offs % POSTS_PER_FETCH != 0):
         rounded_start = start_offs - (start_offs % POSTS_PER_FETCH)
@@ -389,7 +433,6 @@ def process_page(url, dst, sub, imgs, vids, start_offs, end_offs, full_hash):
         if(end_offs % POSTS_PER_FETCH == 0):
             rounded_end -= POSTS_PER_FETCH
 
-    # Inform user of offset effects
     if(rounded_start != 0 or rounded_end != maxsize):
         rounded_start_str = '' if start_offs is None else str(rounded_start)
         rounded_end_str = '' if end_offs is None else str(rounded_end)
@@ -398,22 +441,23 @@ def process_page(url, dst, sub, imgs, vids, start_offs, end_offs, full_hash):
         end_str = '' if end_offs is None else str(end_offs)
         stdout.write(f'[process_page] INFO: This will be pruned to [{start_str}, {end_str}] before downloading.\n')
 
-    # Iterate the pages to get all posts
+    # Iterate through pages using normalized base and parsed service/creator
     all_posts = []
     offset = rounded_start
     stdout.write(f'[process_page] INFO: Fetching posts {offset + 1} - ')
     while(True):
         stdout.write(f'{offset + POSTS_PER_FETCH}...')
         stdout.flush()
-        curr_posts = fetch_posts(base_url, url_sections[-3], url_sections[-1], offset=offset)
-        if(curr_posts == None): return 0
+        curr_posts = fetch_posts(base_url, service, creator, offset=offset)
+        if(curr_posts is None): 
+            return 0
         all_posts = all_posts + curr_posts
         offset += POSTS_PER_FETCH
         stdout.write(f'\033[{len(str(offset)) + 3}D')
         if(len(curr_posts) % POSTS_PER_FETCH != 0 or len(curr_posts) == 0 or offset >= rounded_end):
             break
 
-    # Prune the download list to within the range of offsets if specified
+    # Prune to user-requested offsets (unchanged)
     if(rounded_start != 0):
         skip_start = start_offs - rounded_start - 1
         all_posts = all_posts[skip_start:]
@@ -421,13 +465,12 @@ def process_page(url, dst, sub, imgs, vids, start_offs, end_offs, full_hash):
         skip_end = rounded_end - end_offs
         all_posts = all_posts[:-skip_end]
 
-    # Parse the response to get links for all media, excluding media if necessary
     stdout.write(f'\n[process_page] INFO: Parsing media from the {len(all_posts)} posts.\n')
     named_urls = parse_posts(base_url, all_posts, imgs, vids)
     stdout.write(f'[process_page] INFO: Found {len(named_urls)} media files to download.\n\n')
 
-    # Download all media from the posts
     return download_media(named_urls, imgs, vids, dst, full_hash)
+
 
 
 """
