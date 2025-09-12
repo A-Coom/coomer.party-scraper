@@ -9,37 +9,6 @@ import re
 import requests
 
 
-def su_base_from_url(url: str) -> str:
-    """
-    Normalize any coomer/kemono URL so the base is https://www.<sld>.su
-    Examples:
-      coomer.st -> https://www.coomer.su
-      https://kemono.party/... -> https://www.kemono.su
-    """
-    parts = urlsplit(url if re.match(r'^https?://', url) else f'https://{url}')
-    host = parts.netloc or ''
-    host = host[4:] if host.startswith('www.') else host
-    labels = host.split('.') if host else []
-    sld = labels[-2] if len(labels) >= 2 else (labels[0] if labels else 'coomer')
-    return f'https://www.{sld}.su'
-
-
-def extract_service_creator(url: str):
-    """
-    From a path like /onlyfans/user/<creator>[/post/<id>], get (service, creator).
-    """
-    parts = urlsplit(url)
-    segments = [p for p in parts.path.split('/') if p]
-    try:
-        i_user = segments.index('user')
-        service = segments[i_user - 1]
-        creator = segments[i_user + 1]
-        return service, creator
-    except Exception:
-        return None, None
-
-
-
 POSTS_PER_FETCH = 50
 
 
@@ -176,6 +145,36 @@ def to_camel(sentence):
 
 
 """
+Normalize any coomer/kemono URL so the base is https://www.<sld>.su
+Examples:
+    coomer.st -> https://www.coomer.su
+    https://kemono.party/... -> https://www.kemono.su
+"""
+def su_base_from_url(url):
+    parts = urlsplit(url if re.match(r'^https?://', url) else f'https://{url}')
+    host = parts.netloc or ''
+    host = host[4:] if host.startswith('www.') else host
+    labels = host.split('.') if host else []
+    sld = labels[-2] if len(labels) >= 2 else (labels[0] if labels else 'coomer')
+    return f'https://www.{sld}.su'
+
+
+"""
+From a path like /onlyfans/user/<creator>[/post/<id>], get (service, creator).
+"""
+def extract_service_creator(url):
+    parts = urlsplit(url)
+    segments = [p for p in parts.path.split('/') if p]
+    try:
+        i_user = segments.index('user')
+        service = segments[i_user - 1]
+        creator = segments[i_user + 1]
+        return service, creator
+    except Exception:
+        return None, None
+
+
+"""
 Delete empty and .part files from a directory.
 @param path - Path to the directory to delete files from
 @return None.
@@ -196,9 +195,10 @@ Download media from posts on coomer.su
 @param include_vids - Boolean for if to include videos.
 @param dst - Destination directory for the downloads.
 @param full_hash - Calculate a full hash for quick comparisons.
+@param dump_urls - Boolean for if to skip downloading and only dump the URLs.
 @return the total number of media entries downloaded this session.
 """
-def download_media(urls, include_imgs, include_vids, dst, full_hash):
+def download_media(urls, include_imgs, include_vids, dst, full_hash, dump_urls):
     # Craft the download paths
     stdout.write('[download_media] INFO: Computing hashes of existing files.\n')
     hashes = {}
@@ -232,8 +232,18 @@ def download_media(urls, include_imgs, include_vids, dst, full_hash):
         for skip in skipping:
             del urls[skip]
         stdout.write(f'[download_media] INFO: Removed {len(skipping)} downloads from the queue.\n')
+
+    # Shortcut when dumping URLs
+    if(dump_urls):
+        url_dst = os.path.join(dst, 'urls.txt')
+        stdout.write(f'[download_media] INFO: Dumping URLs to {url_dst}.\n')
+        with open(url_dst, 'w') as f:
+            for name, url in urls.items():
+                f.write(f'{url}\n')
+        return 0
     stdout.write('\n')
 
+    # Begin download
     len_before = len(hashes)
     hashes = multithread_download_urls_special(CoomerThread, urls, pics_dst, vids_dst, algo=algo, hashes=hashes)
     return len(hashes) - len_before
@@ -345,7 +355,7 @@ def process_media(url, dst, imgs, vids, full_hash):
     named_url[name] = url
 
     # Download the single media
-    return download_media(named_url, imgs, vids, dst, full_hash)
+    return named_url
 
 
 """
@@ -392,7 +402,7 @@ def process_post(url, dst, sub, imgs, vids, full_hash):
     named_urls = parse_posts(base_url, post, imgs, vids)
     stdout.write(f'[process_post] INFO: Found {len(named_urls)} media files to download.\n\n')
 
-    return download_media(named_urls, imgs, vids, dst, full_hash)
+    return named_urls
 
 
 
@@ -469,7 +479,7 @@ def process_page(url, dst, sub, imgs, vids, start_offs, end_offs, full_hash):
     named_urls = parse_posts(base_url, all_posts, imgs, vids)
     stdout.write(f'[process_page] INFO: Found {len(named_urls)} media files to download.\n\n')
 
-    return download_media(named_urls, imgs, vids, dst, full_hash)
+    return named_urls
 
 
 
@@ -483,8 +493,9 @@ Driver function to scrape media from coomer or kemono.
 @param start_offs - Index to begin downloading from.
 @param end_offs - Index to finish downloading from.
 @param full_hash - Calculate a full hash for quick comparisons.
+@param dump_urls - Boolean for if to skip downloading and only dump the URLs.
 """
-def main(url, dst, sub, imgs, vids, start_offs, end_offs, full_hash):
+def main(url, dst, sub, imgs, vids, start_offs, end_offs, full_hash, dump_urls):
     # Sanity check imgs and vids
     if(not imgs and not vids):
         stdout.write('[main] WARNING: Nothing to download when skipping images and videos.\n')
@@ -512,21 +523,24 @@ def main(url, dst, sub, imgs, vids, start_offs, end_offs, full_hash):
             stderr.write('[main] ERROR: The URL is malformed.\n')
             return
 
-        # Perform downloading of a post
+        # Fetch URLs for downloading a post
         if(url_sections[-2] == 'post'):
             if(start_offs != None or end_offs != None):
                 stdout.write('[main] WARNING: Start and end offsets are ignored when downloading a post.\n')
-            cnt = process_post(u, dst, sub, imgs, vids)
+            named_urls = process_post(u, dst, sub, imgs, vids)
 
-        # Perform downloading of a media
+        # Fetch URLs for downloading a media
         elif(url_sections[-4] == 'data'):
             if(start_offs != None or end_offs != None):
                 stdout.write('[main] WARNING: Start and end offsets are ignored when downloading a media.\n')
-            cnt = process_media(u, dst, imgs, vids)
+            named_urls = process_media(u, dst, imgs, vids)
 
-        # Perform downloading of a page
+        # Fetch URLs for downloading a page
         else:
-            cnt = process_page(u, dst, sub, imgs, vids, start_offs, end_offs, full_hash)
+            named_urls = process_page(u, dst, sub, imgs, vids, start_offs, end_offs, full_hash)
+
+        # Perform the download
+        cnt = download_media(named_urls, imgs, vids, dst, full_hash, dump_urls)
 
         stdout.write(f'\n[main] INFO: Successfully downloaded ({cnt}) additional media.\n\n')
 
@@ -548,6 +562,7 @@ if(__name__ == '__main__'):
     parser.add_argument('--full-hash', action='store_true', help='calculate full hash of existing files. Ideal for a low bandwidth use case, but requires more processing')
     parser.add_argument('--offset-start', type=int, default=None, dest='start', help='starting offset to begin downloading')
     parser.add_argument('--offset-end', type=int, default=None, dest='end', help='ending offset to finish downloading')
+    parser.add_argument('--dump-urls', action='store_true', help='print the urls to stdout instead of downloading')
 
     try:
         args = parser.parse_args()
@@ -560,6 +575,7 @@ if(__name__ == '__main__'):
         full_hash = args.full_hash
         start_offset = args.start
         end_offset = args.end
+        dump_urls = args.dump_urls
 
     except:
         if('--help' in argv or '-h' in argv):
@@ -603,7 +619,7 @@ if(__name__ == '__main__'):
         confirmed = input('Continue to download (Y/n): ')
         if(len(confirmed) > 0 and confirmed.lower()[0] != 'y'): exit()
 
-    main(url, dst, sub, not img, not vid, start_offset, end_offset, full_hash)
+    main(url, dst, sub, not img, not vid, start_offset, end_offset, full_hash, dump_urls)
     if(confirm):
         input('---Press enter to exit---')
         stdout.write('\n')
