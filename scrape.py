@@ -28,6 +28,7 @@ class CoomerThread(DownloadThread):
         self.base = url
         self.server = 1
         self.coomit()
+        self.fail_count = 0
 
     # Update the coom server URL from the base URL
     def coomit(self):
@@ -45,6 +46,7 @@ class CoomerThread(DownloadThread):
         self.status = self.STANDBY
         self.coomit()
         if(self.server == 1):
+            self.fail_count += 1
             time.sleep(THROTTLE_TIME)
 
     # Safely make a streamed connection
@@ -52,13 +54,15 @@ class CoomerThread(DownloadThread):
         while(True):
             try:
                 headers = { 'Range': f'bytes={start}-' } if start > 0 else {}
-                r = requests.get(self.url, headers=headers, stream=True, allow_redirects=True)
+                r = requests.get(self.url, headers=headers, stream=True, allow_redirects=True, timeout=30)
                 r.raise_for_status()
 
                 # Return the streamed connection
                 return r
             except:
                 self.throttle()
+                if self.fail_count > 100:
+                    return None
 
     # Perform downloading until successful, switching coom servers as "too many requests" responses are received
     def run(self):
@@ -69,6 +73,8 @@ class CoomerThread(DownloadThread):
         # Establish the streamed connection
         self.status = self.CONNECTING
         r = self.establish_stream()
+        if r == None:
+            return
 
         # Get total content size of file
         self.total_size = int(r.headers.get("content-length", 1))
@@ -79,8 +85,8 @@ class CoomerThread(DownloadThread):
         is_duplicate = False
 
         # Open the temporary file
-        chunk_size = 1024 * 1024 * 2
-        with open(tmp_name, 'wb') as tmp_file:
+        chunk_size = 10 * 1024 # debian convention
+        with open(tmp_name, 'wb+') as tmp_file:
             # Download in chunks
             while(True):
                 try:
@@ -89,11 +95,19 @@ class CoomerThread(DownloadThread):
 
                     # Process every chunk
                     for chunk in r.iter_content(chunk_size):
+                        self.status = self.DOWNLOADING
+                        tmp_file.write(chunk)
+                        self.downloaded += len(chunk)
+                        self.fail_count = 0
+
                         # Ensure hash has not been seen before if using short hash
-                        if(not did_hash):
+                        if(not did_hash and (self.downloaded >= 1024*64 or self.total_size >= self.downloaded)):
                             if(self.algo == md5):
                                 self.status = self.HASHING
-                                hash = self.algo(chunk[:1024*64]).hexdigest()
+                                tmp_file.seek(0) # Move file pointer to start of file
+                                hash_buffer = tmp_file.read(1024*64)
+                                tmp_file.seek(0, 2) # Move file pointer to end of file to continue writing there
+                                hash = self.algo(hash_buffer).hexdigest()
                                 if(hash in self.hashes):
                                     is_duplicate = True
                                     break
@@ -102,16 +116,15 @@ class CoomerThread(DownloadThread):
                                 self.hashes[len(self.hashes)] = self.name
                             did_hash = True
 
-                        self.status = self.DOWNLOADING
-                        tmp_file.write(chunk)
-                        self.downloaded += len(chunk)
-
                 except Exception as e:
                     if(r.status_code == NOT_FOUND):
                         self.status = self.ERROR
                         break
                     r.close()
                     r = self.establish_stream(start=self.downloaded)
+                    if r == None:
+                        self.status = self.ERROR
+                        break
 
                 # download is successful or duplicate hash was found
                 else:
@@ -265,6 +278,7 @@ def fetch_posts(base, service, creator, offset=None):
     while(True):
         try:
             res = requests.get(api_url, headers={'accept': 'application/json', 'accept': 'text/css'})
+            res.raise_for_status()
         except:
             if(res.status_code == 429 or res.status_code == 403): time.sleep(THROTTLE_TIME)
             else: break
@@ -287,11 +301,15 @@ Get the creator name.
 @return a name and service of the creator
 """
 def get_creator_name(base, service, creator):
+    if service == 'onlyfans':
+        return f'{creator}_{service}'
+    
     api_url = f'{base}/api/v1/{service}/user/{creator}/profile'
 
     while(True):
         try:
-            res = requests.get(api_url, headers={'accept': 'application/json'})
+            res = requests.get(api_url, headers={'accept': 'application/json', 'accept': 'text/css'})
+            res.raise_for_status()
         except:
             if(res.status_code == 429 or res.status_code == 403): time.sleep(THROTTLE_TIME)
             else: break
