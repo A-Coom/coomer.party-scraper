@@ -209,9 +209,10 @@ Download media from posts on coomer.su
 @param dst - Destination directory for the downloads.
 @param full_hash - Calculate a full hash for quick comparisons.
 @param dump_urls - Boolean for if to skip downloading and only dump the URLs.
+@param delete - Boolean for if to delete duplicates based on file hashes.
 @return the total number of media entries downloaded this session.
 """
-def download_media(urls, include_imgs, include_vids, dst, full_hash, dump_urls):
+def download_media(urls, include_imgs, include_vids, dst, full_hash, dump_urls, delete):
     # Craft the download paths
     stdout.write('[download_media] INFO: Computing hashes of existing files.\n')
     hashes = {}
@@ -226,7 +227,7 @@ def download_media(urls, include_imgs, include_vids, dst, full_hash, dump_urls):
     if(include_imgs):
         if(os.path.isdir(pics_dst)):
             delete_download_artifacts(pics_dst)
-            hashes = compute_file_hashes(pics_dst, IMG_EXTS, algo, hashes, short=(not full_hash))
+            hashes = compute_file_hashes(pics_dst, IMG_EXTS, algo, hashes, short=(not full_hash), recurse = False, delete=delete)
         else:
             os.makedirs(pics_dst)
 
@@ -234,7 +235,7 @@ def download_media(urls, include_imgs, include_vids, dst, full_hash, dump_urls):
     if(include_vids):
         if(os.path.isdir(vids_dst)):
             delete_download_artifacts(vids_dst)
-            hashes = compute_file_hashes(vids_dst, VID_EXTS, algo, hashes, short=(not full_hash))
+            hashes = compute_file_hashes(vids_dst, VID_EXTS, algo, hashes, short=(not full_hash), recurse = False, delete=delete)
         else:
             os.makedirs(vids_dst)
 
@@ -512,8 +513,9 @@ Driver function to scrape media from coomer or kemono.
 @param end_offs - Index to finish downloading from.
 @param full_hash - Calculate a full hash for quick comparisons.
 @param dump_urls - Boolean for if to skip downloading and only dump the URLs.
+@param delete - Boolean for if to delete duplicates based on file hashes.
 """
-def main(url, dst, sub, imgs, vids, start_offs, end_offs, full_hash, dump_urls):
+def main(url, dst, sub, imgs, vids, start_offs, end_offs, full_hash, dump_urls, delete):
     # Sanity check imgs and vids
     if(not imgs and not vids):
         stdout.write('[main] WARNING: Nothing to download when skipping images and videos.\n')
@@ -558,7 +560,7 @@ def main(url, dst, sub, imgs, vids, start_offs, end_offs, full_hash, dump_urls):
             named_urls, dst = process_page(u, dst, sub, imgs, vids, start_offs, end_offs, full_hash)
 
         # Perform the download
-        cnt = download_media(named_urls, imgs, vids, dst, full_hash, dump_urls)
+        cnt = download_media(named_urls, imgs, vids, dst, full_hash, dump_urls, delete)
 
         stdout.write(f'\n[main] INFO: Successfully downloaded ({cnt}) additional media.\n\n')
 
@@ -581,6 +583,7 @@ if(__name__ == '__main__'):
     parser.add_argument('--offset-start', type=int, default=os.environ.get('OFFSET_START',None), dest='start', help='starting offset to begin downloading')
     parser.add_argument('--offset-end', type=int, default=os.environ.get('OFFSET_END',None), dest='end', help='ending offset to finish downloading')
     parser.add_argument('--dump-urls', action='store_false' if os.environ.get('DUMP_URLS', False) else 'store_true', help='print the urls to a text file instead of downloading')
+    parser.add_argument('--delete-duplicates', action='store_false' if os.environ.get('DELETE_DUPLICATES', False) else 'store_true', help='deletes duplicates based on file hashes. Only one file with the unique hash remains')
 
     try:
         args = parser.parse_args()
@@ -594,6 +597,7 @@ if(__name__ == '__main__'):
         start_offset = args.start
         end_offset = args.end
         dump_urls = args.dump_urls
+        delete = args.delete_duplicates
 
     except:
         if('--help' in argv or '-h' in argv):
@@ -637,7 +641,7 @@ if(__name__ == '__main__'):
         confirmed = input('Continue to download (Y/n): ')
         if(len(confirmed) > 0 and confirmed.lower()[0] != 'y'): exit()
 
-    main(url, dst, sub, not img, not vid, start_offset, end_offset, full_hash, dump_urls)
+    main(url, dst, sub, not img, not vid, start_offset, end_offset, full_hash, dump_urls, delete)
     if(confirm):
         input('---Press enter to exit---')
         stdout.write('\n')

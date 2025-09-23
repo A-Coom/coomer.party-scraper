@@ -28,7 +28,7 @@ In its current state, this scraper requires the requests package. You can instal
 
 ```
 usage: scrape.py [-h] [--out OUT] [--sub-folders] [--skip-vids] [--skip-imgs] [--confirm] [--full-hash] [--offset-start START] [--offset-end END]
-                 [--dump-urls]
+                 [--dump-urls] [--delete-duplicates]
                  url [url ...]
 
 Coomer and Kemono scraper
@@ -47,6 +47,7 @@ options:
   --offset-start START  starting offset to begin downloading
   --offset-end END      ending offset to finish downloading
   --dump-urls           print the urls to a text file instead of downloading
+  --delete-duplicates   deletes duplicates based on file hashes. Only one file with the unique hash remains
 ```
 
 The URL can be a page for an artist, a post from an artist, or a single media file. The starting and ending offsets are only respected when downloading from a page.
