@@ -59,11 +59,23 @@ For a docker container the Github actions is used to automatically build a new d
 
 ```
 services:
-  scraper:
+  scraper01: &base
     image: ghcr.io/a-coom/coomer.party-scraper:latest
     volumes:
       - "/PATH/ON/YOUR/HOST:/out"
-    command: --sub-folders --full-hash CREATORLINK CREATORLINK2
+    environment:
+      SUB_FOLDERS: True
+      FULL_HASH: True
+    command: 
+      - CREATORLINK
+      - CREATORLINK2
+    
+  # Using the anchor above (&base) you can now use it as alias to create as many scraper containers as you like
+  scraper02:
+    <<: *base
+    command: 
+      - CREATORLINK3
+      - CREATORLINK4
 ```
 
 ## A Note on Scraping
