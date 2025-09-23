@@ -374,7 +374,7 @@ def process_media(url, dst, imgs, vids, full_hash):
     named_url[name] = url
 
     # Download the single media
-    return named_url
+    return named_url, dst
 
 
 """
@@ -547,20 +547,20 @@ def main(url, dst, sub, imgs, vids, start_offs, end_offs, full_hash, dump_urls, 
         if(url_sections[-2] == 'post'):
             if(start_offs != None or end_offs != None):
                 stdout.write('[main] WARNING: Start and end offsets are ignored when downloading a post.\n')
-            named_urls, dst = process_post(u, dst, sub, imgs, vids)
+            named_urls, creator_dst = process_post(u, dst, sub, imgs, vids)
 
         # Fetch URLs for downloading a media
         elif(url_sections[-4] == 'data'):
             if(start_offs != None or end_offs != None):
                 stdout.write('[main] WARNING: Start and end offsets are ignored when downloading a media.\n')
-            named_urls = process_media(u, dst, imgs, vids)
+            named_urls, creator_dst = process_media(u, dst, imgs, vids)
 
         # Fetch URLs for downloading a page
         else:
-            named_urls, dst = process_page(u, dst, sub, imgs, vids, start_offs, end_offs, full_hash)
+            named_urls, creator_dst = process_page(u, dst, sub, imgs, vids, start_offs, end_offs, full_hash)
 
         # Perform the download
-        cnt = download_media(named_urls, imgs, vids, dst, full_hash, dump_urls, delete)
+        cnt = download_media(named_urls, imgs, vids, creator_dst, full_hash, dump_urls, delete)
 
         stdout.write(f'\n[main] INFO: Successfully downloaded ({cnt}) additional media.\n\n')
 
