@@ -420,7 +420,7 @@ def process_post(url, dst, sub, imgs, vids, full_hash):
     named_urls = parse_posts(base_url, post, imgs, vids)
     stdout.write(f'[process_post] INFO: Found {len(named_urls)} media files to download.\n\n')
 
-    return named_urls
+    return named_urls, dst
 
 
 
@@ -497,7 +497,7 @@ def process_page(url, dst, sub, imgs, vids, start_offs, end_offs, full_hash):
     named_urls = parse_posts(base_url, all_posts, imgs, vids)
     stdout.write(f'[process_page] INFO: Found {len(named_urls)} media files to download.\n\n')
 
-    return named_urls
+    return named_urls, dst
 
 
 
@@ -545,7 +545,7 @@ def main(url, dst, sub, imgs, vids, start_offs, end_offs, full_hash, dump_urls):
         if(url_sections[-2] == 'post'):
             if(start_offs != None or end_offs != None):
                 stdout.write('[main] WARNING: Start and end offsets are ignored when downloading a post.\n')
-            named_urls = process_post(u, dst, sub, imgs, vids)
+            named_urls, dst = process_post(u, dst, sub, imgs, vids)
 
         # Fetch URLs for downloading a media
         elif(url_sections[-4] == 'data'):
@@ -555,7 +555,7 @@ def main(url, dst, sub, imgs, vids, start_offs, end_offs, full_hash, dump_urls):
 
         # Fetch URLs for downloading a page
         else:
-            named_urls = process_page(u, dst, sub, imgs, vids, start_offs, end_offs, full_hash)
+            named_urls, dst = process_page(u, dst, sub, imgs, vids, start_offs, end_offs, full_hash)
 
         # Perform the download
         cnt = download_media(named_urls, imgs, vids, dst, full_hash, dump_urls)
