@@ -591,10 +591,12 @@ if(__name__ == '__main__'):
         full_hash = input('Use full hash (y/N): ')
         start_offset = input('Starting offset (optional): ')
         end_offset = input('Ending offset (optional): ')
+        dump_urls = input('Dump URLs to text file WITHOUT DOWNLOADING MEDIA (y/N): ')
         img = len(img) > 0 and img.lower()[0] == 'y'
         vid = len(vid) > 0 and vid.lower()[0] == 'y'
         sub = len(sub) > 0 and sub.lower()[0] == 'y'
         full_hash = len(full_hash) > 0 and full_hash.lower()[0] == 'y'
+        dump_urls = len(dump_urls) > 0 and dump_urls.lower()[0] == 'y'
         if(len(dst) == 0): dst = './out'
         try:
             start_offset = None if len(start_offset) == 0 else int(start_offset)
@@ -615,6 +617,7 @@ if(__name__ == '__main__'):
         stdout.write(f'Full hashes will{full_hash and " " or " not "}be used\n')
         stdout.write(f'Starting offset is {start_offset}\n')
         stdout.write(f'Ending offset is {end_offset}\n')
+        stdout.write(f'URLs will{dump_urls and " " or " not "}be dumped to text file\n')
         stdout.write('---\n')
         confirmed = input('Continue to download (Y/n): ')
         if(len(confirmed) > 0 and confirmed.lower()[0] != 'y'): exit()
