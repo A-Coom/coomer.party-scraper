@@ -280,18 +280,18 @@ def fetch_posts(base, service, creator, offset=None):
         try:
             res = requests.get(api_url, headers={'accept': 'application/json', 'accept': 'text/css'})
             res.raise_for_status()
-        except:
-            if(res.status_code == 429 or res.status_code == 403): time.sleep(THROTTLE_TIME)
-            else: break
+        except requests.exceptions.HTTPError as e:
+            if(e.response.status_code == 429 or e.response.status_code == 403): time.sleep(THROTTLE_TIME)
+            else:
+                stdout.write(f'[fetch_posts] ERROR: Failed to fetch using API ({api_url})\n')
+                stdout.write(f'[fetch_posts] ERROR: Status code: {e.response.status_code}\n')
+                return []
+        except Exception as e:
+            stdout.write(f'[fetch_posts] ERROR: Failed to fetch using API ({api_url})\n')
+            stdout.write(f'[fetch_posts] ERROR: {e}\n')
+            return []
         else:
-            break
-
-    if(res.status_code != 200):
-        stdout.write(f'[fetch_posts] ERROR: Failed to fetch using API ({api_url})\n')
-        stdout.write(f'[fetch_posts] ERROR: Status code: {res.status_code}\n')
-        return []
-
-    return res.json()
+            return res.json()
 
 
 """
@@ -311,18 +311,18 @@ def get_creator_name(base, service, creator):
         try:
             res = requests.get(api_url, headers={'accept': 'application/json', 'accept': 'text/css'})
             res.raise_for_status()
-        except:
-            if(res.status_code == 429 or res.status_code == 403): time.sleep(THROTTLE_TIME)
-            else: break
+        except requests.exceptions.HTTPError as e:
+            if(e.response.status_code == 429 or e.response.status_code == 403): time.sleep(THROTTLE_TIME)
+            else:
+                stdout.write(f'[get_creator_name] ERROR: Failed to fetch using API ({api_url})\n')
+                stdout.write(f'[get_creator_name] ERROR: Status code: {e.response.status_code}\n')
+                return f'{creator}_{service}'
+        except Exception as e:
+            stdout.write(f'[get_creator_name] ERROR: Failed to fetch using API ({api_url})\n')
+            stdout.write(f'[get_creator_name] ERROR: {e}\n')
+            return f'{creator}_{service}'
         else:
-            break
-
-    if(res.status_code != 200):
-        stdout.write(f'[get_creator_name] ERROR: Failed to fetch using API ({api_url})\n')
-        stdout.write(f'[get_creator_name] ERROR: Status code: {res.status_code}\n')
-        return f'{creator}_{service}'
-
-    return f'{res.json()["name"]}_{service}'
+            return f'{res.json()["name"]}_{service}'
 
 
 """
@@ -406,12 +406,16 @@ def process_post(url, dst, sub, imgs, vids, full_hash):
     api_url = f'{base_url}/api/v1{path}'
     try:
         res = requests.get(api_url, headers={'accept': 'application/json'})
-    except Exception:
+        res.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        if(e.response.status_code == 429 or e.response.status_code == 403): time.sleep(THROTTLE_TIME)
+        else:
+            stdout.write(f'[process_post] ERROR: Failed to fetch using API ({api_url})\n')
+            stdout.write(f'[process_post] ERROR: Status code: {e.response.status_code}\n')
+            return
+    except Exception as e:
         stdout.write(f'[process_post] ERROR: Failed to fetch using API ({api_url})\n')
-        return
-
-    if res.status_code != 200:
-        stdout.write(f'[process_post] ERROR: API returned {res.status_code} ({api_url})\n')
+        stdout.write(f'[process_post] ERROR: {e}\n')
         return
 
     post = [res.json()]
