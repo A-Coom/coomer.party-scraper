@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "coomerscraper"
+version = "0.1.0"
+description = "Scrape content from Coomer and Kemono"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "Apache"}
+authors = [
+    {name = "A-Coom"}
+]
+dependencies = [
+    "requests",
+    "tqdm",
+]
+
+[project.scripts]
+coomerscraper = "coomerscraper.__main__:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

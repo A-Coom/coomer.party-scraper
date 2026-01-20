@@ -1,4 +1,0 @@
-
-[submodule "scraping_utils"]
-	path = scraping_utils
-	url = ../scraping_utils/
