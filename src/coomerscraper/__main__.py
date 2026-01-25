@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 Parse the program arguments or read them from stdin
 """
 def get_arguments() -> Tuple[List[str], Path, bool, bool, Tuple[int,int], bool, int]:
-        # Initialize arguments for CLI use
+    # Initialize arguments for CLI use
     parser = argparse.ArgumentParser(description='Coomer and Kemono scraper')
     parser.exit_on_error = False
     parser.add_argument('urls', type=str, nargs='*', help='coomer or kemono URLs to scrape media from, separated by a space')
@@ -30,6 +30,8 @@ def get_arguments() -> Tuple[List[str], Path, bool, bool, Tuple[int,int], bool, 
     parser.add_argument('-o', '--out', type=str, default=os.getcwd(), help='download destination (default: CWD)')
     parser.add_argument('--skip-imgs', action='store_true', help='skip image downloads')
     parser.add_argument('--skip-vids', action='store_true', help='skip video downloads')
+    #new flags
+    parser.add_argument('--rate-limit', type=int, default=2, help='rate limit in requests/s (default: 2)')
 
     # Handle the special case of logging data
     log_file = None
@@ -78,6 +80,8 @@ def get_arguments() -> Tuple[List[str], Path, bool, bool, Tuple[int,int], bool, 
         offs_end = args.end
         dump_urls = args.dump_urls
         jobs = args.jobs
+        rate_limit = args.rate_limit
+
         assert len(urls) > 0
         logger.debug('Usage: non-interactive')
 
@@ -95,9 +99,11 @@ def get_arguments() -> Tuple[List[str], Path, bool, bool, Tuple[int,int], bool, 
         offs_end = None
         dump_urls = False
         confirm = True
+        rate_limit = input('Enter rate limit in req/s (default: 2): ')
+        rate_limit = int(rate_limit) if rate_limit.isdigit() else 2
 
     # Allow the user to confirm information
-    if(confirm):
+    if confirm:
         print()
         logger.info(f'Scraping media from {urls}')
         logger.info(f'Media will be downloaded to {dst}')
@@ -106,22 +112,24 @@ def get_arguments() -> Tuple[List[str], Path, bool, bool, Tuple[int,int], bool, 
         logger.info(f'Starting offset is {offs_start}')
         logger.info(f'Ending offset is {offs_end}')
         logger.info(f'There will be {jobs} concurrent download threads')
+        logger.info(f'Rate limit is {rate_limit} requests/s')
         print()
         confirmed = input('Continue to download (Y/n): ')
         if len(confirmed) > 0 and confirmed.lower()[0] != 'y':
             exit()
 
     # Return parsed arguments
-    return urls, Path(dst), skip_img, skip_vid, (offs_start, offs_end), dump_urls, jobs
+    return urls, Path(dst), skip_img, skip_vid, (offs_start, offs_end), dump_urls, jobs, rate_limit
 
 
 
 """
 Driver function to handle argument parsing and sanity checks before going to coomer-specific details
 """
+
 def main():
     # Get the program arguments or read them from stdin
-    urls, dst, skip_img, skip_vid, offsets, dump_urls, jobs = get_arguments()
+    urls, dst, skip_img, skip_vid, offsets, dump_urls, jobs, rate_limit = get_arguments()
 
     # Sanity check skip flags
     if skip_img and skip_vid:
@@ -144,7 +152,7 @@ def main():
     urls = [ sanitize_url(u) for u in urls ]
 
     # Proceed with coomer-specific details...
-    coom_main(urls, dst, skip_img, skip_vid, offsets, dump_urls, jobs)
+    coom_main(urls, dst, skip_img, skip_vid, offsets, dump_urls, jobs, rate_limit)
     
 
 

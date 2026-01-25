@@ -8,6 +8,7 @@ from .networking import ( api_fetch_post_multi, api_fetch_post_single
                         , multithread_download, NamedUrl, IMG_EXTS, VID_EXTS )
 from .utils import base_url, compute_file_hashes, create_folder_tree, round_offsets, to_camel
 
+from .rate_limiter import RateLimiter
 
 POSTS_PER_FETCH = 50
 
@@ -85,17 +86,22 @@ Process a post to get all media URLs
 - url: Main URL of the post.
 - skip_img: If image downloads should be skipped.
 - skip_vid: If video downloads should be skipped.
+- rate_limiter: Rate limiter for API requests.
 Returns a list of NamedUrl extracted from the post.
 """
 def process_post( url: str
                 , skip_img: bool
-                , skip_vid: bool ) -> List[NamedUrl]:
+                , skip_vid: bool
+                , rate_limiter: Optional[RateLimiter] = None) -> List[NamedUrl]:
     # Get the SLD and TLD of the URL
     base = base_url(url)
     segments = url.split('/')
     service = segments[-5]
     creator = segments[-3]
     post_id = segments[-1]
+
+    if rate_limiter:
+        rate_limiter.wait()
 
     # Get the JSON version of the post
     post = [ api_fetch_post_single(base, service, creator, post_id)['post'] ]
@@ -122,12 +128,14 @@ Process a page to get all media URLs.
 - skip_img: If image downloads should be skipped.
 - skip_vid: If video downloads should be skipped.
 - offsets: Range of offsets to download.
+- rate_limiter: Rate limiter for API requests.
 Returns a list of NamedUrl extracted from all posts belonging to the page.
 """
 def process_page( url: str
                 , skip_img: bool
                 , skip_vid: bool
-                , offsets: Tuple[Optional[int], Optional[int]] ) -> List[NamedUrl]:
+                , offsets: Tuple[Optional[int], Optional[int]]
+                , rate_limiter: Optional[RateLimiter] = None) -> List[NamedUrl]:
     # Get the SLD and TLD of the URL
     base = base_url(url)
     segments = url.split('/')
@@ -142,6 +150,10 @@ def process_page( url: str
     offset = rounded_offsets[0]
     while True:
         logger.info(f'Fetching posts {offset + 1} - {offset + POSTS_PER_FETCH}')
+
+        if rate_limiter:
+            rate_limiter.wait()
+
         curr_posts = api_fetch_post_multi(base, service, creator, offset)
         all_posts += curr_posts
         offset += POSTS_PER_FETCH
@@ -182,7 +194,7 @@ def purge_duplicate_urls(dst: Path, named_urls: List[NamedUrl]) -> List[NamedUrl
     # Get the hashes of the existing files
     hashes = compute_file_hashes(dst)
 
-    # Remove duplicates by finding URLs that includ the hash
+    # Remove duplicates by finding URLs that include the hash
     unique_urls = []
     for nu in named_urls:
         url_hash = nu.url.split('/')[-1].split('.')[0]
@@ -202,6 +214,7 @@ Driver function to download media from Coomer or Kemono
 - offsets: Post offsets to start from and end at when downloading a page.
 - dump_urls: If URLs should be dumped instead of downloaded from.
 - jobs: Maximum number of threads to perform downloads, one thread per download.
+- rate_limit:  Rate limit in requests per second
 """
 def main( urls: List[str]
         , dst: Path
@@ -209,7 +222,11 @@ def main( urls: List[str]
         , skip_vid: bool
         , offsets: Tuple[Optional[int], Optional[int]]
         , dump_urls: bool
-        , jobs: int) -> None:
+        , jobs: int
+        , rate_limit: int = 2) -> None:
+
+    rate_limiter = RateLimiter(rate_limit)
+    logger.info(f'Rate limit set to {rate_limit} requests/s')
 
     # Loop through the URLs to get more URLs
     for url in urls:
@@ -228,7 +245,7 @@ def main( urls: List[str]
             if offsets[0] is not None or offsets[1] is not None:
                 logger.warning('Start and end offsets are ignored when downloading a post')
             user = segments[-3]
-            named_urls = process_post(url, skip_img, skip_vid)
+            named_urls = process_post(url, skip_img, skip_vid, rate_limiter)
 
         # Fetch URLs to download media from pre-fetched media
         elif segments[-4] == 'data':
@@ -243,7 +260,7 @@ def main( urls: List[str]
         else:
             logger.debug('URL is suspected to be a page')
             user = segments[-1]
-            named_urls = process_page(url, skip_img, skip_vid, offsets)
+            named_urls = process_page(url, skip_img, skip_vid, offsets, rate_limiter)
 
         # Remove URLs of files that already exist
         dst_root = dst / user
@@ -264,6 +281,6 @@ def main( urls: List[str]
         dst_pics = dst_root / 'pics'
         dst_vids = dst_root / 'vids'
         logger.info(f'Downloading to {dst / user}')
-        multithread_download(named_urls, dst_pics, dst_vids, workers=jobs)
+        multithread_download(named_urls, dst_pics, dst_vids, workers=jobs, rate_limiter=rate_limiter)
 
     return
