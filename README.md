@@ -43,9 +43,9 @@ coomerscraper
 ### Advanced Usage
 
 ```
-usage: coomerscraper [-h] [-c] [--dump-urls] [-j JOBS] [--log-file LOG_FILE] [--log-level LOG_LEVEL]
-                     [--offset-end END] [--offset-start START] [-o OUT] [--skip-imgs] [--skip-vids]
-                     [urls ...]
+usage: run.py [-h] [-c] [--dump-urls] [-j JOBS] [--log-file LOG_FILE] [--log-level LOG_LEVEL]
+              [--offset-end END] [--offset-start START] [-o OUT] [--skip-imgs] [--skip-vids]
+              [--rate-limit RATE_LIMIT] [urls ...]
 
 Coomer and Kemono scraper
 
@@ -58,12 +58,15 @@ options:
   --dump-urls           print the urls to a text file instead of downloading
   -j, --jobs JOBS       number of concurrent download threads (default: 4)
   --log-file LOG_FILE   direct logs to a file instead of stdout
-  --log-level LOG_LEVEL level of logging (DEBUG, INFO, WARNING, ERROR; default: INFO)
+  --log-level LOG_LEVEL
+                        level of logging (DEBUG, INFO, WARNING, ERROR; default: INFO)
   --offset-end END      ending offset to finish downloading
   --offset-start START  starting offset to begin downloading
   -o, --out OUT         download destination (default: CWD)
   --skip-imgs           skip image downloads
   --skip-vids           skip video downloads
+  --rate-limit RATE_LIMIT
+                        rate limit in requests/s (default: 2)
 ```
 
 The URL can be a page for a creator, a post from a creator, or a single media file. The starting and ending offsets are only respected when downloading from a page. When downloading a single media file, the creator name cannot be determined, thus goes in a subfolder named "unknown."
