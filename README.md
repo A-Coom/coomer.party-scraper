@@ -43,7 +43,7 @@ coomerscraper
 ### Advanced Usage
 
 ```
-usage: run.py [-h] [-c] [--dump-urls] [-j JOBS] [--log-file LOG_FILE] [--log-level LOG_LEVEL]
+usage: coomerscraper [-h] [-c] [--dump-urls] [-j JOBS] [--log-file LOG_FILE] [--log-level LOG_LEVEL]
               [--offset-end END] [--offset-start START] [-o OUT] [--skip-imgs] [--skip-vids]
               [--rate-limit RATE_LIMIT] [urls ...]
 
