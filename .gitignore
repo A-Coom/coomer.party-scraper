@@ -4,3 +4,4 @@
 *.py[cod]
 *.ruff_cache/
 build/
+.idea/

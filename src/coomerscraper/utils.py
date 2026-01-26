@@ -33,17 +33,30 @@ Returns a set of unique hashes from root.
 """
 def compute_file_hashes(root: Path) -> Set[str]:
     hashes = set()
+    if not root.exists():
+        logger.debug(f'compute_file_hashes: root does not exist: {root}')
+        return hashes
+
     for file in root.glob('**/*'):
         if file.is_dir() or file.suffix == '.part':
+            logger.debug(f'Skipping file: {file} (dir or .part)')
             continue
+
+        # Verbose: announce which file we're hashing right now
+        logger.debug(f'Hashing file: {file}')
+
         with file.open('rb') as f:
             curr_hash = hashlib.sha256()
-            while(True):
+            while True:
                 chunk = f.read(10 * 1024)
                 if not chunk:
                     break
                 curr_hash.update(chunk)
-            hashes.add(curr_hash.hexdigest())
+            file_hash = curr_hash.hexdigest()
+            hashes.add(file_hash)
+
+        # Verbose: show computed hash for the file
+        logger.debug(f'Computed hash {file_hash} for {file}')
     return hashes
 
 
