@@ -264,10 +264,30 @@ Note that since URLs are hashes, there should be no duplicates between posts.
 Returns a possibly reduced list of URLs
 """
 def purge_duplicate_urls(dst: Path, named_urls: List[NamedUrl]) -> List[NamedUrl]:
-    # Get the hashes of the existing files
-    hashes = compute_file_hashes(dst)
+    # when using templates like "[<t:service>]<t:creator>/..." files are grouped in folders
+    # detailed file listing is unnecessary for folders we aren't writing to
+    scan_roots = set()
+    found_structure = False
 
-    # Remove duplicates by finding URLs that include the hash
+    for nu in named_urls:
+        # check if the name implies a directory structure
+        parts = Path(nu.name).parts
+        if len(parts) > 1:
+            found_structure = True
+            # add the top-level folder of this file to the scan list
+            scan_roots.add(dst / parts[0])
+
+    hashes = set()
+    if found_structure and scan_roots:
+        logger.info(f'Template structure detected. Limiting existing file scan to {len(scan_roots)} related folder(s): {[p.name for p in scan_roots]}')
+        for root in scan_roots:
+            hashes.update(compute_file_hashes(root))
+    else:
+        # fallback scan the entire destination directory
+        logger.info(f'Scanning all files in {dst} for existing hashes')
+        hashes = compute_file_hashes(dst)
+
+    # remove duplicates by finding URLs that include the hash
     unique_urls = []
     for nu in named_urls:
         # strip query parameters and get the filename from the URL
@@ -275,7 +295,7 @@ def purge_duplicate_urls(dst: Path, named_urls: List[NamedUrl]) -> List[NamedUrl
         m = re.search(r'([0-9a-f]{16,64})', url_filename)
         url_hash = m.group(1) if m else None
 
-        # If not found in the URL, try to find a hash in the (possibly template-based) name
+        # if not in url, try to find a hash in the (possibly template-based) name
         if url_hash is None:
             m2 = re.search(r'([0-9a-f]{16,64})', nu.name)
             url_hash = m2.group(1) if m2 else None
@@ -288,7 +308,7 @@ def purge_duplicate_urls(dst: Path, named_urls: List[NamedUrl]) -> List[NamedUrl
                 unique_urls.append(nu)
                 continue
 
-        # No hash found — fall back to checking whether the destination file already exists
+        # no hash found -> go back to checking if the dest file already exists
         candidate = dst / nu.name
         if candidate.exists():
             logger.debug(f'Removing from download list because file exists: {candidate}')
