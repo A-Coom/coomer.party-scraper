@@ -41,7 +41,8 @@ coomerscraper
 ```
 usage: coomerscraper [-h] [-c] [--dump-urls] [-j JOBS] [--log-file LOG_FILE] [--log-level LOG_LEVEL]
               [--offset-end END] [--offset-start START] [-o OUT] [--skip-imgs] [--skip-vids]
-              [--rate-limit RATE_LIMIT] [urls ...]
+              [--rate-limit RATE_LIMIT] [--template TEMPLATE] [--image-template IMAGE_TEMPLATE]
+              [--video-template VIDEO_TEMPLATE] [urls ...]
 
 Coomer and Kemono scraper
 
@@ -63,6 +64,11 @@ options:
   --skip-vids           skip video downloads
   --rate-limit RATE_LIMIT
                         rate limit in requests/s (default: 2)
+  --template TEMPLATE   <tags>
+  --image-template IMAGE_TEMPLATE
+                        <tags>
+  --video-template VIDEO_TEMPLATE
+                        <tags>        
 ```
 
 The URL can be a page for a creator, a post from a creator, or a single media file. The starting and ending offsets are only respected when downloading from a page. When downloading a single media file, the creator name cannot be determined, thus goes in a subfolder named "unknown."
