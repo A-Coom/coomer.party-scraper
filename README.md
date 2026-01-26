@@ -94,7 +94,7 @@ Example Output: [ServiceName] CreatorName/PostTitle/0-filename.jpg
 ```
 
 ### Via media type
-You can also set different templates for images or videos This can be done by using the following flags:
+You can also set different templates for images or videos. This can be done by using the following flags:
 ```
 --image-template <tags>
 --video-template <tags>

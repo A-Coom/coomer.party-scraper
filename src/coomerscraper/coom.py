@@ -270,11 +270,31 @@ def purge_duplicate_urls(dst: Path, named_urls: List[NamedUrl]) -> List[NamedUrl
     # Remove duplicates by finding URLs that include the hash
     unique_urls = []
     for nu in named_urls:
-        url_hash = nu.url.split('/')[-1].split('.')[0]
-        if url_hash not in hashes:
-            unique_urls.append(nu)
-        else:
-            logger.debug(f'Removing from download list based on hash: {url_hash}')
+        # strip query parameters and get the filename from the URL
+        url_filename = nu.url.split('?')[0].rstrip('/').split('/')[-1]
+        m = re.search(r'([0-9a-f]{16,64})', url_filename)
+        url_hash = m.group(1) if m else None
+
+        # If not found in the URL, try to find a hash in the (possibly template-based) name
+        if url_hash is None:
+            m2 = re.search(r'([0-9a-f]{16,64})', nu.name)
+            url_hash = m2.group(1) if m2 else None
+
+        if url_hash:
+            if url_hash in hashes:
+                logger.debug(f'Removing from download list based on hash: {url_hash}')
+                continue
+            else:
+                unique_urls.append(nu)
+                continue
+
+        # No hash found — fall back to checking whether the destination file already exists
+        candidate = dst / nu.name
+        if candidate.exists():
+            logger.debug(f'Removing from download list because file exists: {candidate}')
+            continue
+
+        unique_urls.append(nu)
     return unique_urls
 
 
