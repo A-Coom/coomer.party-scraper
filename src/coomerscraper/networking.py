@@ -163,6 +163,7 @@ Download a list of NamedUrl using multithreading, checking for duplicates.
 - dst_vids: Path to download videos to.
 - workers: Maximum number of threads to use for downloading.
 - rate_limiter: Optional rate limiter to control download start rate
+- use_template: Whether to use templated paths for downloads.
 Returns the number of unique downloads successfully performed.
 """
 def multithread_download( urls: List[NamedUrl]
@@ -171,6 +172,7 @@ def multithread_download( urls: List[NamedUrl]
                         , hashes: dict[bytes, Path] = {}
                         , workers: int = 8
                         , rate_limiter = None
+                        , use_template: bool = False
                         ) -> dict[bytes, Path]:
     q: queue.Queue = queue.Queue()
     url_iter = iter(urls)
@@ -187,7 +189,13 @@ def multithread_download( urls: List[NamedUrl]
         def submit_next(slot: int) -> bool:
             try:
                 next_url = next(url_iter)
-                dst = (dst_pics if next_url.url.split('.')[-1] in IMG_EXTS else dst_vids) / next_url.name
+
+                if use_template:
+                    dst = dst_pics / next_url.name
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                else:
+                    dst = (dst_pics if next_url.url.split('.')[-1] in IMG_EXTS else dst_vids) / next_url.name
+
                 pool.submit(_download, next_url, dst, slot, q, rate_limiter)
                 return True
             except StopIteration:

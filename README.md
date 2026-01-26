@@ -20,7 +20,7 @@ If a release is not available for your platform, follow the instructions to inst
 
 ## Install Python Module
 
-If you don't want to (or are unable to) use a packaged release, you can install the tool as a Python module by running the the following command while in the directory containing the pyproject.toml file.
+If you don't want to (or are unable to) use a packaged release, you can install the tool as a Python module by running the following command while in the directory containing the pyproject.toml file.
 
 ```sh
 python3 -m pip install .
@@ -35,10 +35,6 @@ python3 -m coomerscraper
 # Option 2: Run as a standalone command
 coomerscraper
 ```
-
-
-
-
 
 ### Advanced Usage
 
@@ -74,12 +70,34 @@ The URL can be a page for a creator, a post from a creator, or a single media fi
 If the URL is omitted, then you will be prompted for all parameters during execution.
 
 
+## Templates
+Templates allow you to customize the folder and file naming structure to your liking. The following tags are available to use:
+```
+<t:service>   :  creator platform
+<t:creator>   :  creator name
+<t:post>      :  post title
+<t:index>     :  file index
+<t:filename>  :  file name
+<t:filehash>  :  file hash
+<t:extension> :  file extension
+<t:date>      :  published date (YYYYMMDD)
+<t:id>        :  post id
 
+Example Template: [<t:service>] <t:creator>/<t:post>/<t:index>-<t:filename>.<t:extension>
+Example Output: [ServiceName] CreatorName/PostTitle/0-filename.jpg
+```
 
+### Via media type
+You can also set different templates for images or videos This can be done by using the following flags:
+```
+--image-template <tags>
+--video-template <tags>
+```
+The same tags apply, however the `--template` flag must be set first.
 
 ## Docker Container
 
-Github actions is used to automatically build a new Docker image on every push to the main branch. You can use the Docker container with all the normal arguments. This could be an example configuration of a Docker compose file scraping multiple creators:
+GitHub actions is used to automatically build a new Docker image on every push to the main branch. You can use the Docker container with all the normal arguments. This could be an example configuration of a Docker compose file scraping multiple creators:
 
 ```
 services:
@@ -107,7 +125,7 @@ docker run -v /PATH/ON/YOUR/HOST:/app coomerscraper LINK1 LINK2
 - **Do not include usernames anywhere in your issue**. Search engines may match these and result in DMCA problems.
 - Provide a detailed description of the issue, including operating system, Python version, and any program arguments (redact all usernames).
 - Create a log file using the arguments `--log-level DEBUG --log-file short_description.log`.
-- Remove any usernames from the log file (URLs, file names, etc) before attaching it to your issue.
+- Remove any usernames from the log file (URLs, file names, etc.) before attaching it to your issue.
 
 Please do not open an issue if you are having problems with `python3`, `pip`, or your `PATH` unless it is specifically related to the scraper.
 
