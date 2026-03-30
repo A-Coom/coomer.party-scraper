@@ -4,7 +4,7 @@ from pathlib import Path
 from sys import maxsize
 from typing import List, Optional, Tuple
 
-from .networking import ( api_fetch_post_multi, api_fetch_post_single
+from .networking import ( api_fetch_post_multi, api_fetch_post_single, api_fetch_creator_profile
                         , multithread_download, NamedUrl, IMG_EXTS, VID_EXTS )
 from .utils import base_url, compute_file_hashes, create_folder_tree, round_offsets, to_camel
 
@@ -172,6 +172,19 @@ def process_page( url: str
 
 
 """
+Get creator name as string. Some services only use integer IDs which can be 
+replaced by clear names using this function.
+Returns creator name as string
+"""
+def get_creator_name(base: str, service: str, creator: str) -> List[NamedUrl]:
+    profile = api_fetch_creator_profile(base, service, creator)
+    if profile:
+        return f'{profile["name"]}_{service}'
+    else:
+        return f'{creator}_{service}'
+
+
+"""
 Remove duplicate URLs based on the SHA-256 hash of existing files.
 Note that since URLs are hashes, there should be no duplicates between posts.
 - dst: Directory to check for existing files.
@@ -227,7 +240,7 @@ def main( urls: List[str]
             logger.debug('URL is suspected to be a post')
             if offsets[0] is not None or offsets[1] is not None:
                 logger.warning('Start and end offsets are ignored when downloading a post')
-            user = segments[-3]
+            user = get_creator_name(base_url(url), segments[-5], segments[-3])
             named_urls = process_post(url, skip_img, skip_vid)
 
         # Fetch URLs to download media from pre-fetched media
@@ -242,7 +255,7 @@ def main( urls: List[str]
         # Fetch URLs to download media from a page
         else:
             logger.debug('URL is suspected to be a page')
-            user = segments[-1]
+            user = get_creator_name(base_url(url), segments[-3], segments[-1])
             named_urls = process_page(url, skip_img, skip_vid, offsets)
 
         # Remove URLs of files that already exist

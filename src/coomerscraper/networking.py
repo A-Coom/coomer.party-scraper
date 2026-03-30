@@ -150,6 +150,31 @@ def api_fetch_post_single(base: str, service: str, creator: str, post_id: str) -
 
 
 """
+Use the Coomer/Kemono API to fetch a creator profile.
+- base: Base URL for the API (includes up the the TLD).
+- service: Service the media originates from.
+- creator: Creator of the media.
+Returns a creator profile.
+"""
+def api_fetch_creator_profile(base: str, service: str, creator: str) -> dict:
+    api_url = f'{base}/api/v1/{service}/user/{creator}/profile'
+    while True:
+        try:
+            res = requests.get(api_url, headers={'accept': 'text/css'})
+        except Exception:
+            if res.status_code in [429, 403]:
+                time.sleep(THROTTLE_TIME)
+        else:
+            break
+
+    if res.status_code != 200:
+        logger.error(f'Failed to fetch creator profile using the API ({api_url}) --> {res.status_code}')
+        return {}
+
+    return res.json()
+
+
+"""
 Download a list of NamedUrl using multithreading, checking for duplicates.
 - urls: List of NamedUrl to download.
 - dst_pics: Path to download pictures to.
