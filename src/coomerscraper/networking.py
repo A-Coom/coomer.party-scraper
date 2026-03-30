@@ -63,7 +63,7 @@ def _download( url: NamedUrl, dst: Path, slot: int, q: queue.Queue ) -> None:
             headers['Range'] = f'bytes={done}-'
         
         real_url = f'https://n{server_ident}{static_url}'
-        q.put(_ProgressUpdate(slot, done, total, url.name, server_ident))
+        q.put(_ProgressUpdate(slot, done, total, str(dst), server_ident))
 
         try:
             with requests.get(real_url, stream=True, timeout=(3, 3), headers=headers) as res:
@@ -83,17 +83,17 @@ def _download( url: NamedUrl, dst: Path, slot: int, q: queue.Queue ) -> None:
                             continue
                         f.write(chunk)
                         done += len(chunk)
-                        q.put(_ProgressUpdate(slot, done, total, url.name, server_ident))
+                        q.put(_ProgressUpdate(slot, done, total, str(dst), server_ident))
                 tmp.replace(dst)
 
         except (requests.RequestException, requests.exceptions.ReadTimeout):
-            q.put(_ProgressUpdate(slot, done, total, url.name, server_ident, paused=True))
+            q.put(_ProgressUpdate(slot, done, total, str(dst), server_ident, paused=True))
             time.sleep(THROTTLE_TIME)
             server_ident = randrange(3) + 1
-            q.put(_ProgressUpdate(slot, done, total, url.name, server_ident))
+            q.put(_ProgressUpdate(slot, done, total, str(dst), server_ident))
 
         else:
-            q.put(_ProgressUpdate(slot, done, total, url.name, server_ident, finished=True))
+            q.put(_ProgressUpdate(slot, done, total, str(dst), server_ident, finished=True))
             return
 
 
