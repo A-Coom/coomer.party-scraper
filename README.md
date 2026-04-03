@@ -45,7 +45,7 @@ coomerscraper
 ```
 usage: coomerscraper [-h] [-c] [--dump-urls] [-j JOBS] [--log-file LOG_FILE] [--log-level LOG_LEVEL]
                      [--offset-end END] [--offset-start START] [-o OUT] [--skip-imgs] [--skip-vids]
-                     [urls ...]
+                     [--retries RETRIES] [urls ...]
 
 Coomer and Kemono scraper
 
@@ -64,6 +64,7 @@ options:
   -o, --out OUT         download destination (default: CWD)
   --skip-imgs           skip image downloads
   --skip-vids           skip video downloads
+  --retries RETRIES     number of retries per media file (default: None which results in unlimited)
 ```
 
 The URL can be a page for a creator, a post from a creator, or a single media file. The starting and ending offsets are only respected when downloading from a page. When downloading a single media file, the creator name cannot be determined, thus goes in a subfolder named "unknown."

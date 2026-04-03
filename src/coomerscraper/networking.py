@@ -49,12 +49,14 @@ Download a single URL, cycling through random load-balancing servers.
 - dst: Destination of the URL.
 - slot: Position in the progress rendering
 - q: The queue that this job belongs to
+- retries: Number of retries per media file
 """
-def _download( url: NamedUrl, dst: Path, slot: int, q: queue.Queue ) -> None:
+def _download( url: NamedUrl, dst: Path, slot: int, q: queue.Queue, retries: int ) -> None:
     server_ident = randrange(4) + 1
     static_url = url.url[10:]
     tmp = dst.with_suffix(dst.suffix + '.part')
     total = None
+    errcnt = 0
 
     while True:
         headers = { 'Connection': 'close' }
@@ -63,7 +65,7 @@ def _download( url: NamedUrl, dst: Path, slot: int, q: queue.Queue ) -> None:
             headers['Range'] = f'bytes={done}-'
         
         real_url = f'https://n{server_ident}{static_url}'
-        q.put(_ProgressUpdate(slot, done, total, url.name, server_ident))
+        q.put(_ProgressUpdate(slot, done, total, str(dst), server_ident))
 
         try:
             with requests.get(real_url, stream=True, timeout=(3, 3), headers=headers) as res:
@@ -81,20 +83,22 @@ def _download( url: NamedUrl, dst: Path, slot: int, q: queue.Queue ) -> None:
                     for chunk in res.iter_content(chunk_size=CHUNK_SIZE):
                         if not chunk:
                             continue
+                        errcnt = 0
                         f.write(chunk)
                         done += len(chunk)
-                        q.put(_ProgressUpdate(slot, done, total, url.name, server_ident))
+                        q.put(_ProgressUpdate(slot, done, total, str(dst), server_ident))
                 tmp.replace(dst)
 
         except (requests.RequestException, requests.exceptions.ReadTimeout):
-            q.put(_ProgressUpdate(slot, done, total, url.name, server_ident, paused=True))
-            time.sleep(THROTTLE_TIME)
-            server_ident = randrange(3) + 1
-            q.put(_ProgressUpdate(slot, done, total, url.name, server_ident))
-
-        else:
-            q.put(_ProgressUpdate(slot, done, total, url.name, server_ident, finished=True))
-            return
+            q.put(_ProgressUpdate(slot, done, total, str(dst), server_ident, paused=True))
+            errcnt += 1
+            if retries is None or errcnt < retries:
+                time.sleep(THROTTLE_TIME)
+                server_ident = randrange(3) + 1
+                continue
+        
+        q.put(_ProgressUpdate(slot, done, total, str(dst), server_ident, finished=True))
+        return
 
 
 """
@@ -150,11 +154,37 @@ def api_fetch_post_single(base: str, service: str, creator: str, post_id: str) -
 
 
 """
+Use the Coomer/Kemono API to fetch a creator profile.
+- base: Base URL for the API (includes up the the TLD).
+- service: Service the media originates from.
+- creator: Creator of the media.
+Returns a creator profile.
+"""
+def api_fetch_creator_profile(base: str, service: str, creator: str) -> dict:
+    api_url = f'{base}/api/v1/{service}/user/{creator}/profile'
+    while True:
+        try:
+            res = requests.get(api_url, headers={'accept': 'text/css'})
+        except Exception:
+            if res.status_code in [429, 403]:
+                time.sleep(THROTTLE_TIME)
+        else:
+            break
+
+    if res.status_code != 200:
+        logger.error(f'Failed to fetch creator profile using the API ({api_url}) --> {res.status_code}')
+        return {}
+
+    return res.json()
+
+
+"""
 Download a list of NamedUrl using multithreading, checking for duplicates.
 - urls: List of NamedUrl to download.
 - dst_pics: Path to download pictures to.
 - dst_vids: Path to download videos to.
 - workers: Maximum number of threads to use for downloading.
+- retries: Number of retries per media file
 Returns the number of unique downloads successfully performed.
 """
 def multithread_download( urls: List[NamedUrl]
@@ -162,6 +192,7 @@ def multithread_download( urls: List[NamedUrl]
                         , dst_vids: Path
                         , hashes: dict[bytes, Path] = {}
                         , workers: int = 8
+                        , retries: int = None
                         ) -> dict[bytes, Path]:
     q: queue.Queue = queue.Queue()
     url_iter = iter(urls)
@@ -179,7 +210,7 @@ def multithread_download( urls: List[NamedUrl]
             try:
                 next_url = next(url_iter)
                 dst = (dst_pics if next_url.url.split('.')[-1] in IMG_EXTS else dst_vids) / next_url.name
-                pool.submit(_download, next_url, dst, slot, q)
+                pool.submit(_download, next_url, dst, slot, q, retries)
                 return True
             except StopIteration:
                 return False
