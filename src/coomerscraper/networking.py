@@ -109,7 +109,7 @@ def api_fetch_post_multi(base: str, service: str, creator: str, offset: int) -> 
     api_url = f'{base}/api/v1/{service}/user/{creator}/posts?o={offset}'
     while True:
         try:
-            res = requests.get(api_url, headers={'accept': 'text/css'})
+            res = requests.get(api_url, headers={'accept': 'text/css'}, timeout=30)
         except Exception:
             if res.status_code in [429, 403]:
                 time.sleep(THROTTLE_TIME)
@@ -135,7 +135,7 @@ def api_fetch_post_single(base: str, service: str, creator: str, post_id: str) -
     api_url = f'{base}/api/v1/{service}/user/{creator}/post/{post_id}'
     while True:
         try:
-            res = requests.get(api_url, headers={'accept': 'text/css'})
+            res = requests.get(api_url, headers={'accept': 'text/css'}, timeout=30)
         except Exception:
             if res.status_code in [429, 403]:
                 time.sleep(THROTTLE_TIME)
